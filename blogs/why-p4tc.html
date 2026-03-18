@@ -248,6 +248,38 @@
     P4TC intends to meet the P4 spec requirements but additionally allow for going
     beyond P4 from a network programmability PoV.</p>
 
+    <h4>Historical Perspective for P4TC</h4>
+
+    <p>Desire to get P4 over TC has resulted in many disussions in the community over
+    many years and we are finally living up to the rhetoric with P4TC:</p>
+
+    <ul>
+      <li>Netdev 0.1(Ottawa, 2015)<br>
+      Mihai Budiu, "P4: &nbsp;specifying &nbsp;data&nbsp;planes", <a href="https://legacy.netdevconf.info/0.1/docs/mihai-budiu-netdev01-p4.pdf">https://legacy.netdevconf.info/0.1/docs/mihai-budiu-netdev01-p4.pdf</a><br>
+      Mihai Budiu, "P4 &nbsp;demo: a basic&nbsp;L2/L3&nbsp;switch&nbsp;in 170 LOC", <a href="https://legacy.netdevconf.info/0.1/docs/mihai-budiu-netdev01-p4-demo.pdf">https://legacy.netdevconf.info/0.1/docs/mihai-budiu-netdev01-p4-demo.pdf</a></li>
+
+      <li>Many informal hallway and online discussions Netdev 1.1 and 1.2 (2016)</li>
+
+      <li>Netdev 2.2 (Seoul, 2017)<br>
+      Matty Kadosh, "P4 Offload", <a href="https://legacy.netdevconf.info/2.2/slides/salim-tc-workshop04.pdf">https://legacy.netdevconf.info/2.2/slides/salim-tc-workshop04.pdf</a><br>
+      Prem Jonnalagadda, "Mapping tc to P4", <a href="https://legacy.netdevconf.info/2.2/slides/salim-tc-workshop06.pdf">https://legacy.netdevconf.info/2.2/slides/salim-tc-workshop06.pdf</a></li>
+
+      <li>ONF 5th Workshop(Stanford, 2018)<br>
+      Jamal Hadi Salim, "What P4 Can Learn From Linux Traffic Control", <a href="https://opennetworking.org/wp-content/uploads/2020/12/Jamal_Salim.pdf">https://opennetworking.org/wp-content/uploads/2020/12/Jamal_Salim.pdf</a></li>
+
+      <li>First ever workshop dedicated for P4 over TC discussion, Intel, Santa Clara, 2018<br>
+      Many Speakers (Barefoot, Intel, Cumulus, Melanox, Vmware, Mojatatu, and others), <a href="https://files.netdevconf.info/d/5aa8c0ca61ea4e96bb46/">https://files.netdevconf.info/d/5aa8c0ca61ea4e96bb46/</a></li>
+
+      <li>Netdev 0x12 (Montreal, 2018)<br>
+      Antonin Bas and R. Krishnamoorthy, "Instrumenting P4 in the Kernel" <a href="https://www.files.netdevconf.info/d/9535fba900604dcd9c93/files/?p=/Instrumenting%20P4%20in%20the%20Linux%20kernel.pdf">https://www.files.netdevconf.info/d/9535fba900604dcd9c93/files/?p=/Instrumenting%20P4%20in%20the%20Linux%20kernel.pdf</a></li>
+
+      <li>Netdev 0x13 (Prague, 2019)<br>
+      Marian Pritsak and Matty Kadosh, "P4 Compiler Backend for TC", <a href="https://legacy.netdevconf.info/0x13/session.html?p4-compiler-backend-for-tc">https://legacy.netdevconf.info/0x13/session.html?p4-compiler-backend-for-tc</a></li>
+
+      <li>Netdev 0x14 (Virtual)<br>
+      Nick McKeown's keynote: <a href="https://netdevconf.info//0x14/session.html?keynote-mckeown">https://netdevconf.info//0x14/session.html?keynote-mckeown</a></li>
+    </ul>
+
     <h3>So Where Does P4TC Play?</h3>
 
     <p>A major objective of P4TC is to use P4 to prescribe datapaths and additionally
@@ -373,6 +405,38 @@
       </tr>
     </table>
 
+    <h4>Workflow</h4>
+    <p>1 ) A developer writes a P4 program, "myprog"</p>
+
+    <p>2A) Compiles it using the <i>P4C</i>([P4C2][], [P4C][]). The compiler generates 3 outputs:<br>
+      &nbsp;&nbsp;&nbsp;&nbsp;a) A shell script which form template definitions for the different P4 objects "myprog" utilizes (tables, externs, actions etc).<br>
+      &nbsp;&nbsp;&nbsp;&nbsp;b) the parser and the rest of the datapath are generated as eBPF and need to be compiled into binaries. At the moment the parser and the main control block are generated as separate eBPF program but this could change in the future (without affecting any kernel code).<br>
+      &nbsp;&nbsp;&nbsp;&nbsp;c) A json introspection file used for the control plane (by iproute2/tc).</p>
+
+    <p>2B) Compiles using a vendor backend to P4C. We are not going to discuss this aspect; focus is to illustrate the s/w side. But do note you could load the HW datapath using devlink (FIXME: diagram still showing old scheme usinng tc filter).</p>
+
+    <p>3 ) At this point the artifacts from #2 could be handed to an operator. Either the operator is handed the ebpf binary or compiles it. The operator executes the shell script(s) to manifest the functional "myprog" into the kernel.</p>
+
+    <p>4 ) The operator instantiates "myprog" pipeline via the tc P4 filter to ingress/egress (depending on P4 arch) of one or more netdevs/ports (illustrated below as "block 22"). Note the tc filter here is used to manage the P4 program pipeline (whether we have h/w offload or not).</p>
+
+    <p>Several ways to instantiate the s/w datapath:</p>
+
+    <p>Example1: parser is an action:</p>
+    <pre><code>tc filter add block 22 ingress protocol all prio 10 p4 pname myprog \
+    action bpf obj $PARSER.o section p4tc/parse \
+    action bpf obj $PROGNAME.o section p4tc/main</code></pre>
+
+    <p>Example2: parser is at XDP, rest of dpath as an action:</p>
+    <pre><code>ip link set $DEV xdp obj $PARSER.o sec p4tc/parse
+    tc filter add block 22 ingress protocol all prio 10 p4 pname myprog \
+    action bpf obj $PROGNAME.o section p4prog/main</code></pre>
+
+    <p>Note: if you dont need s/w datapath at all there is no need to load the ebpf code.</p>
+
+    <p>Example3: HW only datapath.</p>
+
+    <pre><code>tc filter add block 22 ingress protocol all prio 10 p4 pname myprog</code></pre>
+
     <h4>Deployment Model</h4>
 
     <p>The diagram below illustrates the different models of deployment of an I/DPU(XPU) for hardware offload.
@@ -380,16 +444,112 @@
 
     <img src="blogs/images/Port-Rep-xpu.png">
 
+    <p>The control of whether you want to run <i>smartNIC mode</i> or <i>XPU mode</i> is mostly via firmware, although vendors would sell you a "lower end" version which runs entirely on <i>smartNIC mode</i> - example you can buy an NVIDIA CX6 NIC for a lower price than buying a Bluefield2, Intel has some similar mode as well.</p>
+
+    <p>The 2 modes are mutually exclusive i.e you pick one or the other.</p>
+
+    <p>Lets start with <i>smartNIC mode</i> because this is what most folks are familiar with. In this case your TC CRUD goes via the host CPU. Your s/w exception path also runs on the host CPU. Summary: The ARM cores and everything else on the NIC side is not accessible directly to you. Infact depending on the NIC model there may even not be ARM cores on that NIC!</p>
+
     <p>In the <i>XPU mode</i> the control plane resides in the cpu complex on the NIC (ARM cores in the diagram). So the CRUD commands to manipulate the P4 objects (tables or actions) are issued from the ARM cores. It also means your s/w exception path or pipeline is on the ARM cores.</p>
 
-    <p>So why is <i>XPU mode</i> prefered?</p>
+    <p>In both modes, as illustrated above, the driver will have full visibility to the ASIC as a PCI device.</p>
+
+    <p>So why is <i>XPU mode</i> prefered? There are several reasons:</p>
+
     <ul>
-      <li>Zero Trust of the host.</li>
-      <li>Saving CPU cycles on the host.</li>
-      <li>Power savings.</li>
+      <li>Zero Trust of the host. You may not want to allow the host to be mucking around with the s/w datapath especially in shared environments. It is also argued that if your host got hacked having control of the datapath, perhaps patching it with some new tables etc is easier to do within the NIC where an OOB network exists, accessible only to the owners.</li>
+      <li>Saving CPU cycles on the host. Instead of spending the host CPU on the "network infra" processing, you free those cycles to allow more to be available to the applications by offloading the "network infra" from the host stack.</li>
+      <li>Power savings. The NICs consume a lot less power than host CPUs to achieve the same "network infra" goals.</li>
     </ul>
 
-    <p>See the original document for full details and references.</p>
+    <p>There is an operational con, however: On a host you now have two distros to manage - one on the host and another on the NIC.</p>
+
+    <h5>Port Model</h5>
+
+    <p>As illustrated above, we assume a <i>switchdev</i> model.</p>
+
+    <p>All ports, physical or virtual, fall under two classifications per P4 PNA specs: 1) VFs and SFs representators (or queue-pairs etc) fall under P4 <i>host ports</i> or as commonly refered to as <i>vports</i> 2) physical ports(example P0 and P1 in the diagram) fall under P4 <i>network ports</i> categorization.</p>
+
+    <p>Note, creation of VFs in either modes <b>happens at the host</b>; SFs on the other hand could be created on the xPU side. This is an ongoing discussion in many other jurisdictions including amongst the vendors discussing the P4TC offloads in the bi-weekly meetings.</p>
+
+    <p>In <i>SmartNIC</i> mode the physical (network) and vports are all exposed on the host side. The control plane is going to need access to the PF on the host for control.
+    In <i>XPU</i> mode the vports are exposed to both the host as well as cpu complex side but the physical (network) ports(where the cables are connected) are only visible on the cpu complex. The control plane is going to need access to the PF on the ARM cpu complex for control.</p>
+
+    <h5>Operational Model</h5>
+
+    <p>Regardless of the two modes, the vports, PF and network ports illustrated above could reside on any of the permutations of:</p>
+
+    <ul>
+      <li>Baremetal on <i>host</i> or <i>cpu complex</i></li>
+      <li>On the <i>host</i> or <i>cpu complex</i>, residing in VMs</li>
+      <li>On the <i>host</i> or <i>cpu complex</i> , residing in containers</li>
+      <li>On the <i>host</i> or <i>cpu complex</i>, residing in containers which are in VMs</li>
+    </ul>
+
+    <p>Control plane requires visibility into the PCI device aka PF driver. So PF (and as a consequence control) can be moved to any of the combinations of host/VM/container/cpucomplex as described above.</p>
+
+    <h2>For More Details...</h2>
+
+    <p>See netdevconf 0x17 presentation at:<br>
+    <a href="https://netdevconf.info/0x17/sessions/talk/integrating-ebpf-into-the-p4tc-datapath.html">https://netdevconf.info/0x17/sessions/talk/integrating-ebpf-into-the-p4tc-datapath.html</a></p>
+
+    <p>See EuroP4 paper:<br>
+    <a href="https://github.com/p4tc-dev/docs/blob/main/EuroP4-conference-2023/EuroP4_2023-paper.pdf">https://github.com/p4tc-dev/docs/blob/main/EuroP4-conference-2023/EuroP4_2023-paper.pdf</a><br>
+    <a href="https://github.com/p4tc-dev/docs/blob/main/EuroP4-conference-2023/EuroP4_2023-slides.pdf">https://github.com/p4tc-dev/docs/blob/main/EuroP4-conference-2023/EuroP4_2023-slides.pdf</a></p>
+
+    <p>See netdevconf 0x16 discussions:</p>
+    <ul>
+      <li>overview: <a href="https://netdevconf.info/0x16/session.html?Your-Network-Datapath-Will-Be-P4-Scripted">https://netdevconf.info/0x16/session.html?Your-Network-Datapath-Will-Be-P4-Scripted</a></li>
+      <li>workshop: <a href="https://netdevconf.info/0x16/session.html?P4TC-Workshop">https://netdevconf.info/0x16/session.html?P4TC-Workshop</a></li>
+    </ul>
+
+    <p>code:</p>
+    <ul>
+      <li>kernel code: <a href="https://github.com/p4tc-dev/linux-p4tc-pub">https://github.com/p4tc-dev/linux-p4tc-pub</a></li>
+      <li>iproute2 code: <a href="https://github.com/p4tc-dev/iproute2-p4tc-pub">https://github.com/p4tc-dev/iproute2-p4tc-pub</a></li>
+    </ul>
+
+    <p>Our automated testing consists of:</p>
+
+    <ul>
+      <li>CICD which includes several hundred tdc testcases; the workflow is described here:<br>
+      <a href="https://github.com/p4tc-dev/docs/blob/main/p4tc-workshop-0x16-slides/p4_tc%20netdev%20workshop%20slides.pdf">https://github.com/p4tc-dev/docs/blob/main/p4tc-workshop-0x16-slides/p4_tc%20netdev%20workshop%20slides.pdf</a><br><br>
+      CICD runs on X86 and ARM as well as emulated s390 (to test for BE) following a workflow described above.</li>
+
+      <li>Syszkaller (on dedicated 24/7 X86), see <a href="https://github.com/p4tc-dev/syzkaller-p4tc">https://github.com/p4tc-dev/syzkaller-p4tc</a></li>
+
+      <li>performance evaluation for control plane, see: <a href="https://github.com/p4tc-dev/perf-tests">https://github.com/p4tc-dev/perf-tests</a></li>
+
+      <li>We are working on a datapath test tool whose artifacts will be generated by the <i>P4C</i> compiler.</li>
+    </ul>
+
+    <h2>References</h2>
+
+    <p>
+      [ref1]: <a href="https://legacy.netdevconf.info/2.2/session.html?horman-tcflower-talk">TC Flower offload</a><br>
+      [ref2]: <a href="https://github.com/Mellanox/mlxsw/wiki/ACLs">MLX switch</a><br>
+      [ref3]: <a href="https://man7.org/linux/man-pages/man8/tc-flower.8.html">flower man page</a><br>
+      [ref4]: <a href="https://man7.org/linux/man-pages/man8/tc-u32.8.html">u32 man page</a><br>
+      [ref5]: <a href="https://legacy.netdevconf.info/0x13/session.html?talk-tc-u-classifier">u32 classifier</a><br>
+      [ref6]: <a href="https://docs.nvidia.com/networking/display/MLNXOFEDv473290/OVS+Offload+Using+ASAP2+Direct">Nvidia NICs</a><br>
+      [ref7]: <a href="https://www.netronome.com/media/documents/WP_OVS-TC_.pdf">Netronome NICs</a><br>
+      [switchdev]: <a href="https://www.kernel.org/doc/Documentation/networking/switchdev.txt">switchdev</a><br>
+      [ref8]: <a href="https://opennetworking.org/wp-content/uploads/2020/12/Jamal_Salim.pdf">JHS, 2018 P4 Workshop</a><br>
+      [ref9]: <a href="https://legacy.netdevconf.info/0.1/sessions/21.html">TC Classifier Action Subsystem</a><br>
+      [ref10]: <a href="https://github.com/Azure/DASH">Azure DASH project</a><br>
+      [ref11]: <a href="https://www.intel.ca/content/www/ca/en/products/network-io/programmable-ethernet-switch/tofino-series.html">Tofino Switch</a><br>
+      [ref12]: <a href="https://www.nvidia.com/en-us/networking/products/data-processing-unit/">Nvidia BlueField</a><br>
+      [ref13]: <a href="https://www.intel.ca/content/www/ca/en/products/details/network-io/ipu/e2000-asic.html">Intel Mount Evans</a><br>
+      [ref14]: <a href="https://www.marvell.com/products/data-processing-units.html">Marvel DPU</a><br>
+      [ref15]: <a href="https://www.xilinx.com/applications/data-center/network-acceleration.html">Xilinx NICs</a><br>
+      [ref16]: <a href="https://www.intel.com/content/www/us/en/products/details/network-io/ipu/e2000-asic.html">Intel NICs</a><br>
+      [ref17]: <a href="https://www.amd.com/en/accelerators/pensando">AMD NICs</a><br>
+      [P4C]: <a href="https://github.com/p4lang/p4c">P4C</a><br>
+      [P4C2]: <a href="https://github.com/p4lang/p4c/tree/main/backends/tc">P4C2</a><br>
+      [IS]: <a href="https://github.com/p4tc-dev/docs/blob/main/p4tc-workshop-0x16-slides/Introspection.pdf">Introspection</a><br>
+      [P42023]: <a href="https://www.youtube.com/watch?v=bk2i1Y42wls">Google P4 2023 Workshop</a><br>
+      [bikeshed]: <a href="http://phk.freebsd.dk/sagas/bikeshed/">bike shedding</a>
+    </p>
 
   </div>
 
