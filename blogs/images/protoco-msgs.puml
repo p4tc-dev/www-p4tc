@@ -1,0 +1,31 @@
+@startuml
+title Netlink Protocol
+skinparam sequenceParticipantFontColor white
+
+participant "user ctrl app" #red
+participant "kernel netlink core" #green
+participant "kernel mechanism" #blue
+
+"user ctrl app" -> "kernel netlink core" :\n 1. Read request
+"kernel netlink core" -> "kernel mechanism" : 2.
+note right: Mechanism Processing
+alt Successful processing
+"kernel mechanism" -> "kernel netlink core" :\n 3. Returns retrieved data - implies success
+"kernel netlink core" -> "user ctrl app" :\n 4. Returns retrieved data
+else error
+"kernel mechanism" -> "kernel netlink core" :\n 5. Returns Failed code and potential extended ACK
+"kernel netlink core" -> "user ctrl app" :\n 6. Returns NACK back
+end
+
+"user ctrl app" -> "kernel netlink core" :\n 7. Create/Update/Delete + ACK confirmation
+"kernel netlink core" -> "kernel mechanism" :\n 8.
+note right: Mechanism Processing
+alt Successful processing
+"kernel mechanism" -> "kernel netlink core" :\n 9. Returns success
+"kernel netlink core" -> "user ctrl app" :\n 10. Returns ACK indicating success
+else error
+"kernel mechanism" -> "kernel netlink core" :\n 11. Returns Failed code and potential extended ACK
+"kernel netlink core" -> "user ctrl app" :\n 12. Returns NACK back
+end
+
+@enduml

@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+
+  <title>Designing Robust Control Planes: The Netlink Messaging Infrastructure - P4TC Blog</title>
+
+  <base href="../" target="_self">
+
+  <meta name="description" content="Designing Robust Control Planes: The Netlink Messaging Infrastructure"> <meta name="Keywords" content="Linux kernel, Linux, kernel, network, networking, P4, TC, SDN, Netlink" />
+
+  <meta property="og:type" content="article" />
+<meta property="og:title" content="Designing Robust Control Planes: The Netlink Messaging Infrastructure" />
+<meta property="og:description" content="Designing Robust Control Planes: The Netlink Messaging Infrastructure" />
+<meta property="og:url" content="" />
+<meta property="og:image" content="" />
+<meta property="og:image:width" content="398" />
+<meta property="og:image:height" content="398" />
+<meta property="og:locale" content="en_US" />
+
+
+  <link rel="stylesheet" href="style/site.css">
+  <style>
+    #content {
+      max-width: 800px;
+      margin: 0 auto;
+      text-align: left;
+      padding: 20px;
+    }
+    img {
+      max-width: 100%;
+      height: auto;
+      display: block;
+      margin: 10px 0;
+    }
+    figure {
+      margin: 20px 0;
+      text-align: center;
+    }
+    figcaption {
+      font-style: italic;
+      font-size: 0.9em;
+      margin-top: 5px;
+    }
+    pre {
+      background: #f4f4f4;
+      padding: 15px;
+      border-radius: 4px;
+      border: 1px solid #ddd;
+      overflow-x: auto;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 0.9em;
+      line-height: 1.4;
+    }
+    code {
+      font-family: monospace;
+      background: #f4f4f4;
+      padding: 2px 4px;
+      border-radius: 3px;
+    }
+    .important {
+      padding: 15px;
+      margin: 20px 0;
+      border-left: 5px solid #d9534f;
+      background: #fdf7f7;
+    }
+    .note {
+      padding: 15px;
+      margin: 20px 0;
+      border-left: 5px solid #5bc0de;
+      background: #f4f8fa;
+    }
+    blockquote {
+      border-left: 5px solid #eee;
+      padding: 10px 20px;
+      margin: 20px 0;
+      font-style: italic;
+      color: #555;
+    }
+    h1 { border-bottom: 2px solid #eee; padding-bottom: 10px; margin-top: 40px; }
+    h2 { border-bottom: 1px solid #eee; padding-bottom: 5px; margin-top: 30px; }
+    h5 { margin-bottom: 5px; }
+    ul, ol { margin-bottom: 20px; }
+    li { margin-bottom: 10px; }
+  </style>
+</head>
+
+<body>
+  <div id="welcome">
+    <center>P4TC Blog</center>
+  </div>
+
+  <div id="nav">
+    <center>
+      <a href="index.html">Home</a> | 
+      <a href="blog.html">Blog</a>
+    </center>
+  </div>
+  <br />
+
+  <div id="content">
+    <h1>Designing Robust Control Planes: The Netlink Messaging Infrastructure</h1>
+
+    <p>The late Per Brinch Hansen[1] is credited for introducing the computer science core design principle of the separation of "mechanism" and "policy"[2]. This principle dictates that <u><b>the fundamental operations or capabilities of a system (the <i>mechanism</i>) should be distinct from the rules or decisions about how those capabilities are utilized (the <i>policy</i>)</b></u>.</p>
+
+    <h2>Control API Abstraction: The Separation of Mechanism And Policy</h2>
+
+    <p><i>Figure1</i> illustrates the separation of concern between the two entities: Policy at the top and mechanism at the bottom. These entities communicate through a defined interface labelled as "Policy/mechanism Interface messaging Infrastructure".</p>
+
+    <figure>
+      <img src="blogs/images/mechanism-policy.png">
+      <figcaption>Figure1: Separation Of Mechanism From Control</figcaption>
+    </figure>
+
+    <p>Key benefits of this separation include:</p>
+    <ul>
+      <li><b>Stability</b>: Changing one entity does not destabilize the other.</li>
+      <li><b>Independent Evolution</b>: Each entity's infrastructure can evolve separately.</li>
+      <li><b>Feature Agility</b>: New policy features can be enabled without modifying the underlying mechanism implementation</li>
+    </ul>
+
+    <h3>Historical Context: Unix and the X Windows Exception</h3>
+
+    <p>The success of Unix is largely attributed to its adherence to this rule of separation[8]. However, there are notable exceptions in Unix history. The X Windows subsystem is often cited as a "failing" or "wrong turn" because, while it provided a mechanism for basic windowing and network transparency, it was essentially "policy-free"</p>
+
+    <p>This "policy-free" approach led to a fragmented ecosystem where every application implemented its own policy, resulting in significant inconsistencies in user experience—issues that modern systems like Wayland are currently attempting to resolve. <i>Marcus J. Ranum</i> humorously critiqued this approach and its consequences:</p>
+
+    <blockquote>
+      <b><i>If the designers of X-Windows built cars, there would be no fewer than five steering wheels hidden about the cockpit, none of which followed the same principles -- but you'd be able to shift gears with your car stereo. Useful feature, that.</i></b>
+    </blockquote>
+
+    <h1>Networking Separation Of Concern</h1>
+
+    <p>In the networking world, the "mechanism" maps to the network data/fast path, while "policy" maps to the control plane applications. This article focuses on Linux networking, specifically on <b>Netlink</b> [20][10] which is the infrastructure that facilitates this separation (the middle box in <i>Figure1</i>).</p>
+
+    <p><i>Netlink</i> is a good poster-child of a well-thought mechanism/policy separation. By examining Netlink's features in this article, we can identify the requirements for a robust control abstraction.</p>
+
+    <div class="important">
+      <strong>IMPORTANT</strong><br><br>
+      The primary goal of this document is to define the architectural concepts of an effective control-datapath separation using Netlink. It focuses on high-level design rather than low-level implementation details.<br><br>
+      This is the first in a series of three documents. Since P4TC[25] relies on Netlink, this document serves as the foundational material for <b>Part 2</b>, which will detail the P4TC control-datapath architecture. <b>Part 3</b> will subsequently cover the P4TC architecture for P4 externs, including the specific extensions required for control-datapath separation.
+    </div>
+
+    <h1>So What Is A Good Control Abstraction?</h1>
+
+    <p>There are 3 elements that are integral for mechanism/policy control separation (see <i>Figure1</i>):</p>
+
+    <ol>
+      <li>
+        <b>The control application illustrated as "Policy/Control App" in <i>Figure1</i>.</b>
+
+        <p>Control plane applications handle rich and complex semantic logic. To provide an analogy to the human body, this layer is the brain. It consults many variables to reach its decisions and dictates <i>how</i> and <i>when</i> work is to be executed to achieve a desired goal. For example, a CLI like <i>iproute2</i> translates diverse, human-readable directives into low-level Netlink constructs, which are then relayed to the specific mechanisms.</p>
+
+        <p>The control plane interface <b>MUST</b> be structured such that all complex logic is implemented at the application layer allowing the underlying mechanisms to focus purely on execution.</p>
+      </li>
+
+      <li>
+        <b>The mechanism illustrated as "Mechanism" in <i>Figure1</i>.</b>
+
+        <p>The mechanism is the work machinery. To build on the human body analogy, a mechanism could be, for example, a leg muscle which could be instructed by the brain (control plane) to contract and force a leg's movement. The mechanism essentially defines the <i>what</i> of work.</p>
+
+        <p>Most networking mechanisms in the Linux kernel are packet processing abstractions (eg routing, packet schedulers, packet classifiers, etc); however, any other kernel entity that needs configuration/control can use the Netlink infrastructure (eg netdevices/interfaces in Linux use Netlink to control their attributes like mtu, mac addresses, ip addresses, etc). The east-west direction across "mechanism" illustrated in <i>Figure1</i> as "mechanism work input/output" is essentially the packet path. A good abstraction <b>MUST</b> be independent of the mechanism's implementation details.</p>
+      </li>
+
+      <li>
+        <b>A communication abstraction that connects policy and mechanism illustrated as "Policy/mechanism Interface messaging" in <i>Figure1</i>.</b>
+
+        <p>The first two elements are connected via the communication element. To continue with the human body analogy: this element is the nervous system. When the brain desires for the leg to move, it communicates a request to the leg muscle using the nervous system. And when the leg is in pain it notifies the brain using the nervous system. This nervous system is the focus of this article.</p>
+
+        <p>A good communication abstraction <b>MUST</b> provide the following:</p>
+        <ul>
+          <li>Both <i>synchronous</i> and <i>asynchronous</i> interfaces between policy and mechanism. Netlink uses the socket interface to provide both blocking (synchronous) to reduce latency and non-blocking (asynchronous) semantics catering for multi-tasking.</li>
+          <li>A formal message definition. We will go into details of how this is achieved using a structured wire format in Netlink in section "A Formal Message Definition".</li>
+          <li>Ability to explicitly address a single or group of control application(s) or mechanism(s) and a) issue commands and receive results from issued commands and b) receive asynchronous subscribed-to events. We will go into details of how this is achieved in Netlink in section "Explicit Target Addressing And Command Definitions".</li>
+          <li>Ability to define a protocol for communication. The protocol interface needs to have support for shades of reliability, unicast and group communication, as well as error detection, reporting and recovery. We will go into details of how this is achieved in Netlink in the next sections.</li>
+        </ul>
+      </li>
+    </ol>
+
+    <h2>Netlink Formal Message Definition</h2>
+
+    <figure>
+      <img src="blogs/images/netlink-pkt.png">
+      <figcaption>Figure2: Netlink Formal Message Abstraction</figcaption>
+    </figure>
+
+    <p>Netlink provides a formal message definition that is structured to be 32-bit aligned <i>network-wire compatible</i> as illustrated above.</p>
+
+    <p>The <i>main header</i> has 5 fields {<i>Length, Type, Flags, Sequence number and PID</i>} that operate on all policy/mechanism exchanges; more discussions on these fields in subsequent text.</p>
+
+    <p>The <i>main header</i> is often followed by a mechanism/policy <i>sub-header</i> which optimises the total wire message size by condensing commonly used mechanism's fields in the <i>sub-header</i>.</p>
+
+    <p>The Netlink optional <i>data payload</i> follows the <i>sub-header</i>, targeting either a control path or mechanism's objects. The payload is encapsulated in 32bit aligned TLV (Type-Length-Value) structures (Illustrated as "Mechanism/policy payload in TLVs" above). A TLV's content/value, as defined by the "T" in TLV can be a simple data type (such as signed/unsigned 16 bit, strings, etc), a complex data structure which compounds together simple data types, an arbitrary "binary blob" or even another TLV to further express a data hierarchy or express even more complex structures such as arrays, tables, etc[12].</p>
+
+    <figure>
+      <img src="blogs/images/route-msg.png">
+      <figcaption>Figure3: Sample Route Mechanism Message From Control App</figcaption>
+    </figure>
+
+    <p><i>Figure3</i> illustrates a sample message sent by a DHCP client control app to the Route mechanism in the kernel to create a table entry for route to 10.10.10.10/32 into the <i>main</i> routing table (RT_TABLE_MAIN which is table ID 254). Several things to note:</p>
+    <ul>
+      <li>The whole message is 32-bit aligned. Note: padding is context-dependent. It isn't needed in that specific example because the data happened to align, not because Netlink doesn't require it (as we will see later in <i>Figure4</i>).</li>
+      <li>The main header <i>Length</i> field of 36B is for the whole message (including any pads if any were present).</li>
+      <li>The main header <i>Type</i> field mnemonic naming convention follows a semantic of concating both the target <i>noun</i> and <i>verb</i> in the form of <i>&lt;<b>NOUN</b>&gt;_&lt;<b>VERB</b>&gt;</i>. In the example on <i>Figure3</i> we note <i>Type</i> <code>RTM_NEWROUTE</code> (ID of 24) following this convention. The prefix <b><i>RTM</i></b> essentially indicates the noun for routing mechanism, whereas suffix <b><i>NEWROUTE</i></b> describes the verb for "create" or "update" (create and update are disambiguated via main header flags as discussed later).</li>
+    </ul>
+
+    <div class="note">
+      <strong>NOTE</strong><br><br>
+      Two other <i>Type</i> field values are reserved for the routing mechanism ID 25 for <code>RTM_DELROUTE</code> (Delete) and ID 26 for <code>RTM_GETROUTE</code> (Read).
+    </div>
+
+    <ul>
+      <li>The main header <i>Flags</i> field indicates that the app is:
+        <ul>
+          <li>Sending a Request to the mechanism (<code>NLM_F_REQUEST</code>)</li>
+          <li>To <i>create</i> (<code>NLM_F_CREATE</code>) (as opposed to <i>update</i>)</li>
+          <li>Requiring an ACK back from the kernel when this request is processed by the mechanism(<code>NLM_F_ACK</code>)</li>
+        </ul>
+      </li>
+      <li>The main header <i>Sequence</i> number field is set to <i>1</i>. The sequence number is the same value as what was sent in the original request. A control application can send multiple messages asynchronously, each with a unique sequence number and when a response is received from the kernel mechanism the application is able to discern each individual response. See later discussion on "Definable Communication Protocol".</li>
+      <li>While the main header describes semantics that are applicable to <u>all</u> mechanisms, the <i>sub-header</i> is more specific for each mechanism. Lets review some of the fields in the routing mechanism's <i>sub-header</i>:
+        <ul>
+          <li>The sub-header field <code>rtm_family</code> is used to distinguish whether an entry is IPV4 (<i>AF_INET</i>) or IPV6.</li>
+          <li>The sub-header field <code>rtm_dst_len</code> of 32 is used to describe the (IPv4) route prefix.</li>
+          <li>The sub-header Route table ID is identified via field <code>rtm_table</code> being 254.</li>
+          <li>The sub-header scope(field: <code>rtm_scope</code>) of the route entry is global(<code>RT_SCOPE_UNIVERSE</code>)</li>
+          <li>The sub-header Route type(field: <code>rtm_type</code>) is unicast (<code>RTN_UNICAST</code>)</li>
+        </ul>
+      </li>
+      <li>A TLV that carries the routing entry value being IPv4 address 10.10.10.10 in the payload "V" part ; with "T=<code>RTA_DST</code>", "L of 8 Bytes" (total of the header + 4 bytes IPv4 address content).</li>
+    </ul>
+
+    <h3>Architectural Benefits of Formalization</h3>
+    <p>Formally defining messaging facilitates several advanced software engineering practices:</p>
+
+    <h4><b>Layered Abstractions</b></h4>
+    <p>Software can be written to be layered in the same abstractions as the formal message definitions and mapped to APIs.</p>
+    <p>Common code which operates on the main header abstractions can be maintained in one code location alongside its APIs whereas variable mechanism/policy handling and exceptions can be handled by "plugin" style APIs. Common code is used for parsing and validation of the main header and TLV payload[13]. Any complex payload structures or data hierarchies that are outside the common data types are considered as exceptions - and handed over to either the kernel mechanism or user side implementation for specialised processing.</p>
+
+    <h4><b>Code Generation</b></h4>
+    <p>When a data model is used to define mechanism/policy constructs, such as was done in the case of <b>Generic Netlink</b> [26] Or P4TC[15], then it is possible to generate or amortise a lot of common code both for user space and the kernel mechanism. This not only helps in reducing the code maintenance burden but also facilitates advanced user features such as providing/generating polyglot user APIs[14].</p>
+
+    <h4>Performance Integration</h4>
+    <p>Optimizing throughput and minimizing latency are essential for efficient transactions between the control and data paths. The Netlink architecture facilitates for both.</p>
+
+    <h5>Policy <b>Batching</b></h5>
+    <p>Transaction/message batching is useful for increasing throughput. Netlink batching can be implemented in the following ways:</p>
+    <ol>
+      <li>System call batching. The control application can send, in a single <i>send()</i> request, multiple Netlink messages in one batch amortizing the cost of crossing from user space to the kernel. Essentially think of the application putting together multiple messages illustrated in <i>Figure1</i> in one buffer and invoking send() to target one or more mechanisms.</li>
+      <li>Payload batching. The control app, depending on the mechanism's implementation, could batch multiple payloads separated by the mechanism's sub-header.</li>
+      <li>A specific mechanism could batch multiple payloads using nested TLVs.</li>
+    </ol>
+
+    <h5>Binary Messaging</h5>
+    <p>Netlink message format is binary and compact. Compared to other popular based message packaging schemes such as ascii-based JSON or YAML Netlink binary format has the following advantages:</p>
+    <ul>
+      <li>Much smaller message sizes - generally one or more magnitude less data on the wire when compared to an equivalent prescription in JSON for example. This means less time is spent in communication which is reflected as magnitude level improvements in latency and throughput.</li>
+      <li>Higher performance parsing/serialization and processing speed - reflected as an improvement in messaging latency compared to ASCII processing of JSON/YAML.</li>
+    </ul>
+
+    <p>Netlink best practices recommend managing header attribute space efficiently, specifically reserving capacity for future extensibility. The Netlink 32-bit alignment requirement reinforces this design pattern. This concept is illustrated by the example found at [20]</p>
+
+    <figure>
+      <img src="blogs/images/genl-msg.png">
+      <figcaption>Figure4: Sample Generic Netlink Controller Message Response</figcaption>
+    </figure>
+
+    <p><i>Figure4</i> shows a response message from the kernel <i>Generic Netlink</i> <i>controller</i> mechanism back to a control application in response to a request to retrieve details about a generic mechanism named "test1". Several space conserving and extensibility techniques can be observed here:</p>
+    <ul>
+      <li>The mechanism/policy sub-header identifies <i>Generic Netlink</i> with a 16b reserved field. One could have used all the full 32b sub-header space to store just the <i>cmd</i> and <i>version</i> fields - but the design decision at the time deemed that we are never going to have more than 255 verbs/cmds or versions of <i>Generic Netlink</i>. So the reserved field is kept for future use. Example, if one was to change the <i>version</i> field to a new value then the reserved field could be used to further interpret the rest of the message.</li>
+      <li>2 byte padding is used for the <code>CTRL_ATTR_FAMILY_NAME</code> string data type value's 32b alignment - making it flexible to extend to longer or shorter names.</li>
+      <li>2 byte padding is used for the <code>CTRL_ATTR_FAMILY_ID</code> 16b data type to align to 32b. While this may look like a waste - example one could ask: Why not make the ID 32 bits? Well, there is no point to do so if you only need 16 bits. In a future time the controller mechanism could be given a hint to interpret the payload differently; example to interpret the content as 32b or two 16b fields.</li>
+    </ul>
+
+    <h4>Transaction Support</h4>
+    <p>Both the control and mechanism MUST support for transactions. A primary example where transactions are required is when a control app needs to read a very large table and the kernel mechanism cannot fit the response in a single message and has to send it in a series of messages. Netlink implements this in a <i>dump protocol</i> which works as follows:</p>
+    <ol>
+      <li><b>Transaction Request</b>: The control application initiates the process by sending a request message to the kernel with the <code>NLM_F_DUMP</code> flag set in the main header <code>Flags</code> field to signal to the kernel that a series of messages is expected.</li>
+      <li><b>Kernel Mechanism Data Response(s)</b>: The kernel mechanism starts generating the response data back. Depending on the size of the mechanism data, at least one and possibly more such messages will be sent to the control app until all the requested data is retrieved. Each of these data messages has its main header <code>Type</code> field set to the specific mechanism's object <i>create</i> verb (e.g., <code>RTM_NEWROUTE</code>). The main header <code>Flags</code> field in these responses will have the <code>NLM_F_MULTI</code> flag set to indicate that the message is part of a larger, multi-part response.</li>
+      <li><b>End Of Transaction</b>: After sending all the requested data, the kernel sends a final, empty message to signal the end of the transaction. This message will have its main header <i>Type</i> field set to <code>NLMSG_DONE</code>. This specific message type indicates to the control application that all data has been transmitted and the dump transaction is over.</li>
+    </ol>
+    <p>For completion, the reverse direction needs to be supported i.e. from the control application to the datapath mechanism, example when creating, updating or deleting entries. Preferably a two phase commit semantic [17] will be useful in this case. Unfortunately such transactional capability does not exist in Netlink. One can batch multiple requests or objects (see discussion on "Policy Batching" above) but there is no enforced rule on how a mechanism should treat a series of batched objects. For example, the <i>tc actions</i> mechanism will process a batch of entries and continue executing the operation requested until it is completely done despite any failure in the middle. The IETF Forces protocol does a decent job at addressing this [21]</p>
+
+    <h4><b>Backward And Forward Compatibility</b></h4>
+    <p>Backward and forward compatibility is baked into the Netlink infra. A newer receiver implementation (kernel mechanism or control application) can process messages sent by an older sender implementation for backward compatibility. An older receiver implementation can process messages sent by a newer sender implementation.</p>
+    <p>If a target receiver encounters an unknown TLV, it can skip it or reject the message and generate an error response message. If the target receives an expected TLV but invalid payload it can use in its place defined defaults or generate an error. These features are particularly useful when the control and datapath are evolving separately.</p>
+    <p>Additionally, one could use versioning - that attempt was added to <i>Generic Netlink</i> (see <i>Figure4</i>) but has not been used so far.</p>
+
+    <h4><b>Identity And Access Control</b></h4>
+    <p>In a multi-control-app environment it is often useful to identify which entity issued a specific command to create a specific policy.</p>
+    <p>The main header <i>PID</i> field could be used to carry identity. Example in <i>Figure4</i> we see the PID value 5831 which identifies the process id of the control application that issued the request.</p>
+    <p>A more powerful use of identity is when it is used to embed IDs that can be used to correlate policy state to specific control applications or mechanisms. An example mechanism that implements a primitive variant of this feature is the IP routing mechanism whose sub-header is illustrated in <i>Figure5</i>.</p>
+    <p>The <code>rtm_protocol</code> field in the routing mechanism <i>sub-header</i> (See <i>Figure3</i>) is used to identify the entity that installed the route; some examples of reserved IDs include <code>RTPROT_ZEBRA</code> which identifies the <code>FRR</code> routing daemon[22], <code>RTPROT_BIRD</code> which identifies the <code>bird</code>[23] routing daemon etc.</p>
+
+    <figure>
+      <img src="blogs/images/rtmsg-protocol.png">
+      <figcaption>Figure5: Routing Mechanism Identity Definitions</figcaption>
+    </figure>
+    <p><i>Figure5</i> shows the identities of known entities for the routing mechanism (see: <i>include/uapi/linux/rtnetlink.h</i>).</p>
+    <p>Keeping track of the identity of the policy source is useful for debugging in case of conflicts. More importantly identity could be used to implement features such as fine-grained access control e.g which app is allowed to read/write a specific kernel object, etc.</p>
+    <p>Netlink has primitive access control for control applications. The control application needs <code>CAP_NET_ADMIN</code> capability to write to the kernel (<i>Create</i>, <i>Update</i> and <i>Delete</i>) although read access from the kernel does not require any special permissions.</p>
+    <p>When we discuss P4TC we will introduce other techniques used for access control, primarily ability to recognise which entity is allowed to do what.</p>
+
+    <h4><b>Error Detection, Reporting And Handling</b></h4>
+    <p>It is important for a control infrastructure to provide error management that provides means to detect, report, and recover from failures during communication. There are several tool kits in the Netlink environment that could be employed.</p>
+
+    <h5>Netlink Error Reporting</h5>
+    <p>A control application can ask to receive an acknowledgement from a mechanism by expressing this desire in its request using the <code>NLM_F_ACK</code> main header <i>Flags</i> field. The control app will receive either a positive(ACK) or negative acknowledgement(NACK) both will have main header <code>Type</code> set to <code>NLMSG_ERROR</code>.</p>
+
+    <p><i>Figure6</i> below illustrates both the ACK and NACK packet.</p>
+
+    <figure>
+      <img src="blogs/images/netlink-ack.png">
+      <figcaption>Figure6: The Netlink N/ACK message</figcaption>
+    </figure>
+    <p>The error code is an integer value used in traditional return codes in Unix system calls (as well as some libraries); an <i>errno</i> of zero implies "Success" while non-zero implies some failure (see: errno.h). Positive acknowledgements have their error codes set to zero while NACKs carry a negative value.</p>
+
+    <div class="note">
+      <strong>NOTE</strong><br><br>
+      The error codes can be printed in human friendly string format using the <i>perror()</i> call.
+    </div>
+
+    <p>The "original Netlink header" segment is also returned in the N/ACK. The control app can use the N/ACK to correlate to an issued request using the main header sequence number, etc.</p>
+    <p>By default, on a NACK, the control app would also receive the original payload unless they explicitly requested not to get it.</p>
+    <p>Often it is difficult to deduce from a response what piece of mechanism code contributed to a reported failure. Consider a control app sending a request with several attributes and a target mechanism deciding it does not like one of them and responding with a NACK error code of <code>-EINVAL</code> (indicating <i>invalid value</i>). It is difficult upon inspection of the response for the control app to understand which attribute was rejected. To alleviate this, a control application could optionally ask for more information from the mechanism in the form of extended ACKs. The extensions are carried in the response in one or more TLVs. A TLV payload could contain a descriptive English language explanation of the error or an offset to a list of attribute pointing to the erroneous one.</p>
+    <p>Let's illustrate a message from the routing mechanism in response to erroneous attempt to create an IPv4 route (see <i>Figure3</i>) claiming a 32 bit prefix size in field <code>rtm_dst_len</code> but infact sending a 128 bit size payload in the <code>RTA_DST TLV</code>. The error code in this case is <code>-EINVAL</code> and the extended ACK carries the following English message.</p>
+    <pre>ipv4: rtm_src_len and rtm_dst_len must be 32 for IPv4</pre>
+    <p>Consider a control application requesting a batch <i>update</i> for multiple table entries within a mechanism. If only a subset of the entries is successfully updated, the mechanism can still classify the overall operation as a success. However, it can leverage an <i>extended ACK</i> (as is done in P4TC) to provide granular feedback, detailing the specific count of successful updates versus failures. The control application can then use this metadata to initiate recovery procedures. For instance, upon detecting partial failures, the application might query the target table to synchronize state and identify exactly which entries were missed.</p>
+    <p>The kernel can also issue error reports specific to <i>dump</i> transactions (see "Transaction Support"). A dump operation may lose synchronization after the initial message delivery, typically due to one of the following scenarios:</p>
+    <ul>
+      <li><b>Concurrent Modifications</b>: While one application is dumping a table, another may simultaneously <i>create</i>, <i>update</i>, or <i>delete</i> entries in that same table.</li>
+      <li><b>System Interruptions</b>: Because Linux is a multi-user, multitasking OS, a dump may be interrupted before completion.</li>
+    </ul>
+    <p>A robust control-datapath infrastructure must detect and report these inconsistencies. While an implementation could theoretically ensure atomicity by locking the table for the duration of the dump, this is prohibitively expensive and would degrade datapath packet-processing performance.</p>
+    <p>Instead, Netlink provides built-in mechanisms to detect these anomalies. When an interruption or inconsistency occurs, the kernel sets the <code>NLM_F_DUMP_INTR</code> bit in the Netlink main header's <i>Flags</i> field. Upon detecting this flag, the control plane application should initiate a recovery procedure—typically by re-issuing the dump request to the kernel.</p>
+
+    <h5>System Level Error Reporting</h5>
+    <p>Note that there are other system errors that the kernel reports back to the control app by virtue of Netlink using socket system calls. For example a Netlink <i>recvmsg()</i> system call may be interrupted before mechanism processing completion (return code of <code>EINTR</code>) or may return before completion when not blocking(return code of <code>EAGAIN</code>) - in both cases the application will have to retry reading from the kernel. It is also possible for a <i>recvmsg()</i> to return <code>ENOBUFS</code>; this would happen in cases where the kernel is unable to allocate enough memory to pass back a response or subscribed-to event to the control app. For events this could happen to a multicast group you are subscribed-to be if it gets overwhelmed with published events in particular when the control app is not reading them fast enough. You need to handle this scenario like you would any out of memory event and recover.</p>
+    <p>The kernel will report to the control app if a delivered message to the user was truncated (return code <code>MSG_TRUNC</code>) in the msg flags. This catastrophe could happen for example if the buffer passed in <i>recvmsg()</i> call was smaller than the message the kernel mechanism was trying to deliver. A solution is to increase the buffer size and retry. Another approach is to invoke <i>recvmsg()</i> "peek" which returns you the length of the available kernel mechanism message but does not remove it from the kernel; then follow up with a proper <i>recvmsg()</i> and a sufficient message buffer size.</p>
+
+    <h4>Debugging</h4>
+    <p>A robust control abstraction <b>MUST</b> include ability to debug the communication infrastructure when needed. Netlink facilitates several techniques. We list a few here.</p>
+    <p>The most common debugging approach is to listen to mechanism events. For standard mechanisms such as routing, traffic control etc the ability to subscribe to appropriate events and print the observed events on a console already exists via the <i>iproute</i> utility set. For proprietary mechanisms one would need to write a proprietary control app to subscribe to such events. Example below shows the <i>ip</i> cli subscribing to events on links (network ports) and sometime later being notified that the wireless link <i>wlp3s0</i> went down (notice the <i>NO-CARRIER</i> flag).</p>
+    <p><b>myprompt</b>$ <i>ip monitor link</i></p>
+    <pre>4: wlp3s0: &lt;NO-CARRIER,BROADCAST,MULTICAST,UP&gt;
+    link/ether</pre>
+    <p>The illustrated <i>ip</i> utility does not expose the "wire level" details. One way to get low level details is to use <i>strace</i> utility [24]. Below we illustrate the same event but with more details.</p>
+    <p><b>myprompt</b>$ <i>strace ip mon link</i></p>
+    <pre>recvmsg(3, {msg_name={sa_family=AF_NETLINK, nl_pid=0, nl_groups=0x000001}, msg_namelen=12, msg_iov=[{iov_base=[{nlmsg_len=64, nlmsg_type=RTM_NEWLINK, nlmsg_flags=0, nlmsg_seq=0, nlmsg_pid=0}, {ifi_family=AF_UNSPEC, ifi_type=ARPHRD_ETHER, ifi_index=if_nametoindex("wlp3s0"), ifi_flags=IFF_UP|IFF_BROADCAST|IFF_MULTICAST, ifi_change=0}, [[{nla_len=11, nla_type=IFLA_IFNAME}, "wlp3s0"], [{nla_len=20, nla_type=IFLA_WIRELESS}, "\x10\x00\x19\x8b\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"]]], iov_len=16384}], msg_iovlen=1, msg_controllen=0, msg_flags=0}, 0) = 64</pre>
+    <p>When the event fires up, recvmsg system call returns 64 bytes for an event on group 1(<i>nl_groups</i>=0x000001). Notice the link mechanism sub-header (all fields prefixed with <code>ifi_</code>) field <code>ifi_flags</code> bitmask has the bits <code>IFF_UP|IFF_BROADCAST|IFF_MULTICAST</code> set; these bits are reflected in the ip monitor link output in "<b>&lt;..&gt;</b>" enclosure. The <code>IFF_RUNNING</code> bit which signifies the link operational status is not set. The "ip monitor link" output prints <i>NO-CARRIER</i> for that bit.</p>
+    <p>Note as well two other TLVs illustrated: <code>IFLA_WIRELESS</code> and <code>IFLA_IFNAME</code> (which carries the wireless link name).</p>
+
+    <div class="note">
+      <strong>NOTE</strong><br><br>
+      When it is unable to interpret fields, <i>strace</i> will just dump raw data which can be deduced using the message definitions. For more human friendly output (such as above) you will need to be patch <i>strace</i> and teach it how to interpret these message fields.
+    </div>
+
+    <p><i>nlmon</i>[18] is a special link/port that was created to capture system Netlink messages. When <i>nlmon</i> is administered to be up, all Netlink messages are copied to that device. Which means we can attach standard packet capture utilities to it (<i>wireshark</i> illustrated below):</p>
+    <p><b>myprompt</b>$ <i>tshark -i nlmon0 -v</i></p>
+    <pre>Linux rtnetlink (route Netlink) protocol
+    Netlink message header (type: Create network interface)
+        Length: 64
+        Message type: Create network interface (16)
+        Flags: 0x0000
+            .... .... .... ...0 = Request: 0
+            .... .... .... ..0. = Multipart message: 0
+            .... .... .... .0.. = Ack: 0
+            .... .... .... 0... = Echo: 0
+            .... .... ...0 .... = Dump inconsistent: 0
+            .... .... ..0. .... = Dump filtered: 0
+        Sequence: 0
+        Port ID: 0
+    Interface family: 0
+    Device type: Ethernet (1)
+    Interface index: 4
+    Device flags: UP, BROADCAST, MULTICAST (0x00001003)
+        .... .... .... .... .... .... .... ...1 = Interface: Up
+        .... .... .... .... .... .... .... ..1. = Broadcast: Valid
+    Device change flags: 0
+    Attribute: Device name: wlp3s0
+        Len: 11
+        Type: 0x0003, Device name (3)
+            0... .... .... .... = Nested: False
+            .0.. .... .... .... = Network byte order: False
+            Attribute type: Device name (3)</pre>
+    <p>Above we show the same netlink message that was displayed by the other two utilities. Note: "Device name" is an interpretation of the IFLA_NAME TLV.</p>
+
+    <div class="note">
+      <strong>NOTE</strong><br><br>
+      Like <i>strace</i>, <i>wireshark</i> will dump raw data when it is unable to interpret fields. And as in the <i>strace</i> case, you will need to be patch <i>wireshark</i> and teach it how to interpret these message fields.
+    </div>
+
+    <h4><b>Intra-node And Inter-node Communication</b></h4>
+    <p>While <i>Netlink</i> interface works well on a single host, there is desire to scale to a cluster-wise control of datapaths. Over the years the industry has converged to an effort generally referred to as SDN (Software Defined Networking). For the purpose of brevity, this article will not go into SDN details - a good summary of the general architectures, motivations and approaches is documented in [4]. The fact that <i>Netlink</i> provides a formal binary wire-compatible messaging and facilitates protocol construction (see section: "Definable Communication Protocol" ) makes it fit for use not only between user and kernel (or user to user) but also across multiple instances of linux (see attempt to make Netlink work as an SDN interface [11]).</p>
+
+    <h2>Explicit Target Addressing And Command Definitions</h2>
+    <hr>
+    <p>Each kernel datapath or user space control entity is addressable using the main Netlink header. The addresses could be unicast or implicit multicast. As mentioned earlier both the target address as well as the command/verb are carried in the main header 16bit <i>Type</i> field illustrated in <i>Figure2</i> and <i>Figure3</i> (<code>RTM_NEWROUTE</code>).</p>
+
+    <h3>Rich Target Addressing</h3>
+    <p>A good control plane interface needs to be able to support both unicast and multicast targeting.</p>
+
+    <h4>Policy-To-Mechanism Unicast One-To-One And Many-To-One Addressing</h4>
+    <p>Any individual entity can be addressed in unicast communication by another entity (either user policy-app to kernel-mechanism or vice-versa). User space entities could be easily identified by their processid (See: <i>Figure4</i> and discussion on " Identity And Access Control") while mechanisms in the kernel are identified by their target id reflected in the "Type" field.</p>
+    <ol>
+      <li>Unicast addressing is a fundamental feature requirement to facilitate separation of policy and mechanism. The most common communication pattern is a policy application issuing command unicast-ed to the kernel mechanisms and receiving a unicast response back.
+        <div class="note">
+          <strong>NOTE</strong><br><br>
+          Netlink infra can also be used as an IPC unicast between two user space entities (Main header <i>PID</i> field set to the processid of the destination)[19]
+        </div>
+      </li>
+      <li>Multiple control processes can communicate to a single mechanism using unicast addressing. IOW, a many-to-one communication paradigm applies. This feature is key to maintaining the "multi-user" unix paradigm.</li>
+    </ol>
+
+    <h4>Mechanism-To-Policy One-To-Many And Many-To-Many Addressing</h4>
+    <p>A Netlink message target can be a multicast group.</p>
+    <p>Netlink offers a publish-subscribe event infrastructure. One or more control applications can join a multicast group address to receive async event notifications from one or more kernel mechanism. For example the ipv4 routing kernel mechanism publishes ipv4 routing table changes to any control applications that subscribes to group <code>RTMGRP_IPV4_ROUTE</code>.</p>
+    <p>A control application can subscribe to multiple multicast groups and receive events from multiple mechanisms. For example, in addition to subscribing to <code>RTMGRP_IPV4_ROUTE</code> the application can subscribe to Netlink group <code>RTNLGRP_LINK</code> to receive link notification (illustrated in section "Debug").</p>
+
+    <h4>Multi-Object Commands</h4>
+    <p>Multi-object <i>Read</i> or <i>Delete</i> are also made possible via main header <i>flags</i> field. For example, it is possible to read a whole routing table by using <code>RTM_GETROUTE</code> by specifying the main header modifier flags <code>NLM_F_ROOT</code> and <code>NLM_F_MATCH</code>; and it is possible to delete a whole routing table by sending <code>RTM_DELROUTE</code> command with the flag <code>NLM_F_ROOT</code>.</p>
+
+    <h3>Verb-Noun Support</h3>
+    <p>To be effective, at minimal, a control interface is required to support the basic CRUD (<i>Create</i>, <i>Read</i>, <i>Update</i>, <i>Delete</i>) verbs. As mentioned earlier, Netlink current "good practise" follows a semantic approach of combining the target address with the command/verb in the main header's <i>Type</i> field. Let's illustrate with an example of the kernel routing mechanism (See <i>Figure3</i>). The supported verbs are:</p>
+    <ol>
+      <li><i>Create</i> (often suffixed with verb NEW) in this case <code>RTM_NEWROUTE</code> (24),</li>
+      <li><i>Read</i> (often suffixed with verb GET) in this case <code>RTM_GETROUTE</code>(26),</li>
+      <li><i>Update</i> is semantically defined as a Create (in this case <code>RTM_NEWROUTE</code>) with further clarification provided in the main header <i>flags</i> field to emphasize that the request is an update. There are other rich variations of <i>update</i> semantics when targeting kernel mechanism object:
+        <ul>
+          <li>"Replace object" i.e classical UPDATE (flag <code>NLM_F_REPLACE</code>).</li>
+          <li>"update object if it exists, otherwise create it" (flag combo: <code>NLM_F_REPLACE | NLM_F_CREATE</code>).</li>
+          <li>"create only, error out if object exists" (flag <code>NLM_F_EXCL</code>).</li>
+          <li>"append even if it exists" (flag <code>NLM_F_APPEND</code>).</li>
+        </ul>
+      </li>
+      <li><i>Delete</i> (often suffixed with DEL) in this case <code>RTM_DELROUTE</code>(25)</li>
+    </ol>
+
+    <p>There are two other implicit commands:</p>
+    <ul>
+      <li><i>Subscribe</i> - used by control apps to subscribe to kernel mechanism events. For example a control app that registers to multicast group <code>RTNLGRP_IPV4_ROUTE</code> will get notified every time a route entry is Created, Updated or Deleted.</li>
+      <li><i>Publish</i> - where the kernel mechanism publishes events to one or more subscribers (control apps).</li>
+    </ul>
+    <p>For our purposes we extend the concept of CRUD to include publish-subscribe concepts as CRUDPS (<i>Create</i>, <i>Read</i>, <i>Update</i>, <i>Delete</i>, <i>Publish</i>, <i>Subscribe</i>).</p>
+
+    <h4>Challenges With Combining Verb + Noun</h4>
+    <p>As previously illustrated, the main header <i>Type</i> values 24–26 are globally reserved for the routing mechanism. Consequently, the Type field encodes both the "address" (the routing mechanism) and the "verb" (the CRUD operation). This creates an RPC-style "verb+noun" command structure that fails to strictly disambiguate the action from the target object.</p>
+    <p>We contend that this RPC-style approach is not the most efficient application of Netlink. Instead, a more effective architecture utilizes a fixed set of verbs—a principle central to REST APIs. Despite significant industry investment in RPC-heavy frameworks like gRPC, the widespread adoption of HTTP-based APIs demonstrates the robustness of separating verbs from nouns.</p>
+    <p>This distinction between noun-verb semantics and a fixed-verb architecture is a core design philosophy we will illustrate further in our discussion of P4TC.</p>
+
+    <h5>Enter <i>Generic Netlink</i></h5>
+    <p>Netlink is very popular but there are addressing challenges which surfaced whenever a new mechanism was introduced. Each new mechanism required several <code>Type</code> field values (example values 24-26 are reserved for the routing mechanism). Since the <code>Type</code> name space is 16 bits, at some point in history, it was observed that we were destined to run out of values. <i>Generic Netlink</i> was introduced as a solution to this problem[16] [20].</p>
+    <p><i>Figure4</i> illustrates an important feature that came with <i>Generic Netlink</i>: the <code>Type</code> field reflects a target mechanism address of <code>GENL_ID_CTRL</code> instead of combined RPC style <i>verb+noun</i>. There is <u>no verb semantic</u> in the <code>Type</code> field anymore. Instead the verb appears in the <i>Generic Netlink</i> sub-header as the <i>cmd</i> field value.</p>
+    <p><i>Generic Netlink</i> also introduced ability to extend the message layout by adding a mechanism proprietary sub-header (example of a mechanism sub-header see the routing mechanism in <i>Figure3</i>). When such a sub-header is defined it appears right after the <i>Generic Netlink</i> sub-header (see <i>Figure4</i>). One could imagine re-writing the routing mechanism to be communicated using <i>Generic Netlink</i> by specifying the routing mechanism sub-header to be used in the extended <i>Generic Netlink</i> sub-header and keeping all the routing mechanism TLV semantics as is.</p>
+    <p><i>Generic Netlink</i> also introduced a special built-in mechanism called "controller" with fixed ID 0x10. The controller acts as an oracle in the kernel and is aware of all registered <i>Generic Netlink</i> mechanisms. All mechanisms register with a name and ID/address (and can be referenced by either).</p>
+    <p>The oracle provides two important features.</p>
+
+    <h6>Dynamic Address Allocation</h6>
+    <p>This is a DHCP-like feature which issues "address"/ID when mechanisms register. When registering, generic netlink based mechanisms can specify the following[16]:</p>
+    <ul>
+      <li>The name and ID they wish to be identified with</li>
+      <li>The commands they support and what permission/capabilities are needed by the control plane to invoke those commands, etc</li>
+      <li>The TLVs they are willing to accept and their value constraints (their value types, sizes, etc)</li>
+      <li>The size of the extended sub-header if the mechanism expects one</li>
+      <li>The multicast groups they will send events to</li>
+    </ul>
+
+    <div class="note">
+      <strong>NOTE</strong><br><br>
+      When registering, the mechanism may request a specific "address"/ID; however, the controller may decide to issue a different ID if the requested ID has already been claimed by a different mechanism.
+    </div>
+
+    <h6>Introspection</h6>
+    <p>This feature provides a "service discovery" infrastructure to control applications. User space control applications can ask the controller on details of specific mechanisms.</p>
+
+    <figure>
+      <img src="blogs/images/ovs_datapath.png">
+      <figcaption>Figure7: ovs_datapath Generic Netlink mechanisms</figcaption>
+    </figure>
+    <p><i>Figure7</i> shows the features of a <i>Generic Netlink</i> mechanism called <i>ovs_datapath</i>. These features are retrieved when the controller is queried for a mechanism by name (or ID if known). In this case a utility called <i>genl</i> was used (command issued: <code>genl ctrl get name ovs_datapath</code>). The controller's response shows that mechanism <i>ovs_datapath</i> has target address 0x27, has a proprietary sub-header of size 4B, is capable of processing 9 different TLVs and supports 4 commands with IDs 0x1-0x4. Each command definition specifies its functionality/capabilities and the requisite permissions for user-space invocation. Lastly <i>ovs_datapath</i> advertises a single multicast group that can be subscribed to - in this case a multicast group called "ovs_datapath" which has ID/address 0x1.</p>
+    <p>Introspection is a powerful idea because it allows for control applications to dynamically discover mechanisms of interest and their supported features. This implies that one could write a very generic control application which queries the controller and builds its infrastructure as needed - a big improvement relative to existing applications such as iproute2 which assume static values.</p>
+    <p>We contend that a good control abstraction <b>MUST</b> support introspection and for this reason we add <i>introspection</i> to our early list of necessary verbs <i>CRUDSP</i> (<i>Create</i>, <i>Read</i>, <i>Update</i>, <i>Delete</i>, <i>Subscribe</i>, <i>Publish</i>) to <i>CRUDSPI</i> (<i>Create</i>, <i>Read</i>, <i>Update</i>, <i>Delete</i>, <i>Subscribe</i>, <i>Publish</i>, <i>Introspection</i>).</p>
+
+    <div class="note">
+      <strong>NOTE</strong><br><br>
+      <i>Generic Netlink</i> "good practise" still uses noun-verb semantics for the commands; for example ovs_datapath has command <i>OVS_DP_CMD_GET</i> used to retrieve its configuration and <i>OVS_DP_CMD_SET</i> command to set configuration. When we talk about P4TC we will discuss about how we improve on this and how we extend the concept of introspection to user space.
+    </div>
+
+    <h2>A Definable Communication Protocol</h2>
+    <hr>
+    <p>To complement the message abstractions, Netlink provides protocol features that facilitate a wide range of protocol approaches between the policy and mechanism implementations. Lets expand on what is already discussed in section "A Formal Message Definition" to demonstrate some protocol features.</p>
+
+    <figure>
+      <img src="blogs/images/protoco-msgs.png">
+      <figcaption>Figure8: Sample Netlink Messaging</figcaption>
+    </figure>
+    <p><i>Figure8</i> illustrates classical Netlink protocol exchange pattern used by most applications (most prominent being <i>iproute2</i>). In the first exchange (messages 1-6) the control app issues a <i>Read</i> request which also solicits for an acknowledgement. Upon successful processing of the request by the mechanism, the control app will receive the data it requested back.</p>
+
+    <div class="note">
+      <strong>NOTE</strong><br><br>
+      Note: This is counter-intuitive because it seems more sensible to first receive the ACK to say "your message was received" or something along those lines and then the requested data but that would complicate the implementation.
+    </div>
+
+    <p>Upon failure in the mechanism processing, the control app will get back a NACK described in section "Netlink Error Reporting".</p>
+    <p>In the second exchange (message 7-12) in <i>Figure8</i> we illustrate the operation of message types that do not generate data from the mechanism (type being any of <i>Create</i>/<i>Update</i>/<i>Delete</i>). In such a request, the mechanism response will be either an ACK or NACK.</p>
+
+    <h3>Integrating Reliability</h3>
+    <p>A classical reliable protocol could be created by a control plane application by:</p>
+    <ul>
+      <li>Using the main header <i>sequence</i> numbers to track the request sent to mechanism(s).</li>
+      <li>Soliciting for an ACK from the mechanism via the main header <i>Flags</i> field setting <code>NLM_F_ACK</code> (see discussion on "Optimizing Message Exchange")</li>
+      <li>Adding timers for re-transmits in case the application does not receive responses in time. Useful for detecting cases where the kernel continues to operate but the response never comes back (I have seen this in situations where Netlink mutex is deadlocked)</li>
+    </ul>
+
+    <h3>Handling Semi Reliability</h3>
+    <p>Events from the kernel mechanism are not reliably delivered. The kernel could drop event messages for many reasons: For example the allocated message space may be misconfigured and is insufficient to carry the event details; or the application is unable to keep up with the rate of event arrival in which case the buffer space allocated is quickly overrun. The application should detect and recover from such situations as described in "Error Detection, Reporting And Handling".</p>
+
+    <h3>Validating Write Commands</h3>
+    <p>When issuing <i>write</i> commands (<i>Create</i>, <i>Update</i>, <i>Delete</i>), control applications often require the resulting policy data in addition to a success confirmation. As shown in <i>Figure8</i>, standard <i>write</i> commands do not inherently get back the affected data. The desire to get back the data is often driven by a need for robustness: validating that kernel-level execution matches the application's intent; however, primarily the driver is the need for state synchronization i.e making sure what the application commanded is what was done by the mechanism end point.</p>
+    <p>In many cases, the kernel mechanism assumes default attributes when they are left unspecified in an issued command; for instance, the tc actions mechanism generates an index ID for a created action instance. The control application cannot predict what index is issued . To resolve this synchronization gap, the application can resort to several approaches:</p>
+    <ol>
+      <li>Synchronous Polling: The application follows a write with a subsequent read request to verify the entry’s existence and attributes.</li>
+      <li>Asynchronous notification via event Subscription: The application subscribes and listens for asynchronous events detailing changes. However, because events can be unreliable, this must be augmented by periodic "read" audits as described earlier.</li>
+    </ol>
+    <p>There is a third way.</p>
+    <p>One could set the <code>NLM_F_ECHO</code> to a write request's main header <i>flags</i> field. In such cases <i>write</i> requests, such as the <i>Create</i> request shown in <i>Figure8</i>, will also get the data result of the executed commands i.e the exchange would be similar to a successful read command, receiving a message with the data as created by the mechanism. Main difference would be that it is then followed by an ACK.</p>
+
+    <h3>Optimizing Message Exchanges</h3>
+    <p>Taking into perspective the <code>NLM_F_ECHO</code> flag, we note that a control app write request does not need to solicit for an ACK from the mechanism. Essentially <i>Create</i>/<i>Update</i>/<i>Delete</i> requests can set the <code>NLM_F_ECHO</code> flag instead. On success the app receives the applied data back and on failure receives a <i>NACK</i>.</p>
+    <p>The prescribed optimization above is used by P4TC.</p>
+
+    <h2>Conclusion</h2>
+    <p>Throughout this document, we have established the requirements for a robust control abstraction and examined how Netlink fulfills these requirements. With these foundational Netlink architectural concepts established, Part 2 will detail how they are practically applied and sometimes extended to design the P4TC control-datapath architecture.</p>
+
+    <h2>References</h2>
+    <p><small>
+      [1] https://en.wikipedia.org/wiki/Per_Brinch_Hansen<br>
+      [2] https://en.wikipedia.org/wiki/Separation_of_mechanism_and_policy<br>
+      [3] http://art.net/~hopkins/Don/unix-haters/x-windows/disaster.html<br>
+      [4] https://datatracker.ietf.org/doc/html/rfc7426<br>
+      [5] https://github.com/p4tc-dev/docs/blob/main/why-p4tc.md<br>
+      [6] https://datatracker.ietf.org/doc/html/rfc5812<br>
+      [7] https://p4.org/<br>
+      [8] https://cscie2x.dce.harvard.edu/hw/ch01s06.html<br>
+      [9] https://x.org/wiki/<br>
+      [10] https://datatracker.ietf.org/doc/html/rfc3549<br>
+      [11] https://datatracker.ietf.org/doc/html/draft-jhsrha-forces-netlink2-02<br>
+      [12] https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git/tree/include/net/netlink.h?h=linux-6.18.y&id=25442251cbda7590d87d8203a8dc1ddf2c93de61#n177<br>
+      [13] https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git/tree/include/net/netlink.h?h=linux-6.18.y&id=25442251cbda7590d87d8203a8dc1ddf2c93de61#n203<br>
+      [14] https://docs.kernel.org/userspace-api/netlink/specs.html<br>
+      [15] https://github.com/p4lang/p4c/tree/main/backends/tc<br>
+      [16] https://marc.info/?l=linux-netdev&m=115072450928755&w=4<br>
+      [17] https://en.wikipedia.org/wiki/Two-phase_commit_protocol<br>
+      [18] https://elixir.bootlin.com/linux/v6.12.3/source/drivers/net/nlmon.c<br>
+      [19] see NETLINK_USERSOCK<br>
+      [20] https://docs.kernel.org/userspace-api/netlink/intro.html<br>
+      [21] https://www.rfc-editor.org/rfc/rfc5810.html#section-4.3.1<br>
+      [22] https://frrouting.org/<br>
+      [23] https://bird.network.cz/<br>
+      [24] https://man7.org/linux/man-pages/man1/strace.1.html<br>
+      [25] https://p4tc.dev<br>
+      [26] https://docs.kernel.org/userspace-api/netlink/intro.html#generic-netlink
+    </small></p>
+
+  </div>
+
+  <br>
+  <br>
+  <br>
+  <br>
+  <p><small><a href="mailto:p4tc-discussions@netdevconf.info">Contact Us</a></small></p>
+</body>
+
+</html>
