@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+
+  <title>What Is P4TC You Ask? - P4TC Blog</title>
+
+  <base href="../" target="_self">
+
+  <meta name="description" content="What Is P4TC You Ask?"> <meta name="Keywords" content="Linux kernel, Linux, kernel, network, networking, P4, TC, SDN" />
+
+  <meta property="og:type" content="article" />
+<meta property="og:title" content="What Is P4TC You Ask?" />
+<meta property="og:description" content="What Is P4TC You Ask?" />
+<meta property="og:url" content="" />
+<meta property="og:image" content="" />
+<meta property="og:image:width" content="398" />
+<meta property="og:image:height" content="398" />
+<meta property="og:locale" content="en_US" />
+
+
+  <link rel="stylesheet" href="style/site.css">
+  <style>
+    #content {
+      max-width: 800px;
+      margin: 0 auto;
+      text-align: left;
+      padding: 20px;
+    }
+    img {
+      max-width: 100%;
+      height: auto;
+      display: block;
+      margin: 10px 0;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 20px 0;
+    }
+    td {
+      padding: 10px;
+      vertical-align: top;
+      border: 1px solid #ddd;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="welcome">
+    <center>P4TC Blog</center>
+  </div>
+
+  <div id="nav">
+    <center>
+      <a href="index.html">Home</a> | 
+      <a href="blog.html">Blog</a>
+    </center>
+  </div>
+  <br />
+
+  <div id="content">
+    <h1>What Is P4TC You Ask?</h1>
+
+    <p>The original version of P4TC was scriptable and is described <a href="https://github.com/p4tc-dev/docs/blob/main/scriptable-why-p4tc.md">here</a>.
+    The main difference with the current version is migration of the software
+    datapath from a scriptable tc u32-like approach to eBPF. For analysis of our
+    migration to eBPF, see:
+    <a href="https://github.com/p4tc-dev/docs/blob/main/p4-conference-2023/2023P4WorkshopP4TC.pdf">this presentation</a>
+    and: <a href="https://netdevconf.info/0x17/sessions/talk/integrating-ebpf-into-the-p4tc-datapath.html">Netdevconf 0x17 talk</a>.</p>
+
+    <p>P4TC is a net-namespace aware P4 implementation over TC. A P4 program and
+    its associated objects and state are attached to a kernel <i>netns</i> structure.
+    IOW, if we had two programs across netns' or within a netns they have no
+    visibility to each others objects (unlike for example TC actions whose kinds are
+    "global" in nature or eBPF maps visavis visibility on bpftool).</p>
+
+    <p>P4TC builds on top of many years of Linux TC experiences of a netlink control
+    path interface coupled with a software datapath with an equivalent offloadable
+    hardware datapath.</p>
+
+    <p>Any hardware offload in the TC world requires a functionally equivalent software
+    implementation as illustrated below.</p>
+
+    <img align="left" width="200" height="300" src="blogs/images/software-twin.png" style="margin-right: 20px;">
+
+    <p>A packet X input would expect the same transformation with an output result of Y
+    whether that packet arrives in the kernel datapath or hardware offloaded datapath.</p>
+
+    <p>The P4TC software datapath uses eBPF accessing P4 objects that require control
+    interface residing in the P4TC domain. In the tradition of TC offloads, both the
+    hardware and software use the same control path interfaces, semantics and
+    tooling.</p>
+
+    <p>The TC equivalence model provides expressive features where one could split
+    the P4 pipeline processing between software and hardware; or alternatively,
+    entirely in software or hardware. Think of taking a P4 pipeline and fitting
+    it into one or all of: the hardware, XDP and TC.
+    Another perspective of the equivalence model is to facilitate digital twins of
+    the datapath: You can run the P4 pipeline entirely in software to emulate a
+    datapath that is running in production offloaded to one or more vendor hardware
+    with zero code changes.</p>
+
+    <div style="clear: both;"></div>
+
+    <h2>The Challenges With Current Linux Offloads</h2>
+
+    <p>The Linux kernel already supports offloads for several TC classifiers, including
+    but not limited to, <i>flower</i> and <i>u32</i>.</p>
+
+    <p>Flower has become quiet popular and is supported by a wide variety of NICs and
+    switches. For this reason we will stick
+    to using <i>flower</i> to provide context for P4TC.</p>
+
+    <p>The diagram below illustrates a high level overview of TC (Match-Action Table)
+    MAT runtime offload for the flower classifier (all the other offloadable
+    classifiers follow the same semantics).</p>
+
+    <img align="left" width="400" height="600" src="blogs/images/tc-flower-offload.png" style="margin-right: 20px;">
+
+    <p>The example demonstrates a user adding a table entry on the ingress of device
+    <i>eth0</i> to match a packet with header fields <i>ethernet type ip, ip protocol SCTP
+    and destination port 80</i>. Upon a match the packet is <i>dropped</i>.</p>
+    
+    <p>Observe that the match entry abstraction exists both in hardware and in the
+    kernel; the user gets to select whether to install an entry in the kernel,
+    hardware or both.
+    In the illustrated example, the entry skips the software table (keyword <i>skip_sw</i>)
+    and is installed only in the hardware table. To install the
+    entry only in the kernel/software table the keyword <i>skip_hw</i> is used. When
+    neither <i>skip_sw</i> or <i>skip_hw</i> is specified the kernel attempts to install the
+    entry both in s/w and h/w (it may fail on the hardware side if there are no more
+    resources available to accommodate the table entry).</p>
+
+    <p>Note: A wide variety of other kernel-based offload approaches for various
+    other subsystems exist including switchdev, TLS, IPSEC, MACsec,
+    etc. For sake of brevity we wont go into any details of these mechanisms.</p>
+
+    <div style="clear: both;"></div>
+
+    <h3>So What Is Wrong With Current Kernel Offload Approaches?</h3>
+
+    <p>While the open source community development approach has helped to commoditize
+    offloads and provide stability, it is also a double edged sword; it comes at a
+    cost of a slower upstream process and enforced rigidity of features.</p>
+
+    <p>Often the hardware has datapath capabilities that are hard or impossible to
+    expose due to desire to conform to available kernel datapath abstractions.
+    In particular this is contentious with newer hardware features which were
+    not designed (by vendors) with the thought "how would this work with the Linux kernel?".
+    Extending the kernel (to support these new features) by adding new extensions
+    in the kernel takes an unreasonably long time to upstream because care needs to
+    be taken to ensure backward compatibility, etc - and not to forget that as in
+    any large communities the kernel community is rife with folks with strongs
+    points of views which could lead to long tangent discussions (a "condition"
+    often refered to as <i>bikeshed</i>).</p>
+
+    <p>But even in cases where datapath offload frameworks exist and are mostly
+    sufficient, for example the TC architecture, anytime small extensions are
+    required it is non-trivial to adapt-to for the same (process) reasons.
+    As an example, when an enterprise consumer requires a simple offload match to
+    extend the tc <i>flower</i> classifier with the end goal to eventually be supported
+    by a distro vendor such as RH, Ubuntu, SUSE etc it could take <b>multiple years</b>
+    for such a feature to show up in the enterprise consumer's network.
+    Adding a basic header field match offload for flower (as trivial as that may
+    sound), requires:</p>
+
+    <ol>
+      <li>patching the kernel flow dissector,</li>
+      <li>patching the tc flower user space code,</li>
+      <li>patching the tc flower kernel code</li>
+      <li>patching the driver code</li>
+      <li>convincing the subsystem owners to agree on the changes.</li>
+    </ol>
+
+    <p>The process is a rinse-repeat workflow which requires not only for perseverance but
+    also above average social and technical skills of the developers and associated management.</p>
+
+    <p>Simply put: The current kernel offload approach and process is not only costly
+    in time but also expensive in personnel requirements. In fact some folks implement
+    datapaths in user space to bypass the kernel process altogether (and not for the
+    most often cited reason of performance).</p>
+
+    <h4>So What Are The Alternatives? And Are They Any Better?</h4>
+
+    <p>These kernel challenges have "empowered" a trend to bypass the kernel altogether and
+    move to user space with solutions like DPDK. Unfortunately such bypass approaches
+    are not good for the consumer since they are encumbered with vendor-specific APIs
+    and object abstractions. If you pick a specific vendor, you are essentially locked
+    into their API.
+    OTOH, the kernel provides a <i>stable, well understood single API and abstraction</i>
+    for offloaded objects regardless of the hardware vendor - which has been proven
+    in deployments (with exception of the process issues being a hindrance).</p>
+
+    <p>Due to supply chain challenges (which were exercabeted by the COVID pandemic)
+    the industry is trending to a model where consumers purchase NICs from multiple
+    vendors. Imagine the operational complexity of building out infrastructure with
+    different vendor NICs each with their own interfaces and tooling in comparison
+    to vendor-agnostic, well understood tooling in the kernel world.</p>
+
+    <p>Summary:  Clearly, a single abstraction for both control and datapath as offered
+    by the kernel approach is a less costly and appealing from an operational/deployment
+    perspective.</p>
+
+    <h4>There Is No <i>one-model-fits-all</i> Network Datapath</h4>
+
+    <p>Network datapath deployments tend to be very specific to the applications they
+    serve. But even when serving similar applications, two different organizations may
+    end up deploying different datapaths due to organizational capabilities or culture.
+    See for example some of the big cloud vendors for a sample space.... they are all
+    different. Basically Conway's law applies.
+    Typically this desire translates into request for just this "one feature" that
+    perhaps nobody else needs but makes a lot of sense for that one organization.
+    These <i>one-offs</i> are abundant and the current upstream process does not bode
+    well for such requirements due to the process requirements upstream.</p>
+
+    <p>The emergence of "programmable switches" and NICs/xPUs has exacerbated this process challenge because
+    now a consumer can finally cater to their organization's network exact requirements
+    by programming how the hardware executes a specified datapath. From a simplistic
+    PoV: think of being provided a hardware canvas and you can describe the packet
+    processing semantics for that hardware using the P4 language and architecture.</p>
+
+    <h3>So Why P4 And How Does P4 Help Here?</h3>
+
+    <p>P4 is the <i>only</i> widely deployed specification that is capable of defining
+    datapaths. In fact two major NIC vendors Intel and AMD
+    produce "P4-native" NICs today.</p>
+
+    <p>By "datapath definition" we mean not only the ability to specify the
+    match-action tables, but also the control of conditions that glue them together
+    in a pipeline traversal by a candidate packet.
+    We take advantage of the TC match-action architecture which satisfies a lot of the proven foundational requirements which P4TC builds on.</p>
+
+    <p>P4 is capable of describing a wide range of datapaths so much so that
+    large NIC consumers such as Microsoft, Google, and others have opted
+    to specifying their hardware datapath requirements to NIC vendors (or even internally in their
+    own orgs) with P4. It is essentially the HAL formal definition.</p>
+
+    <p>From this perspective:
+    Think of a P4 program as an <i>abstraction language for the datapath</i> i.e
+    it describes the <i>datapath behavior</i>. And think of P4TC as manifesting the datapath
+    definition for both hardware offloading and kernel/software.</p>
+
+    <p>While P4 may have shortcomings it is the only game in town and we are compelled
+    enough to add support for it in the kernel.
+    P4TC intends to meet the P4 spec requirements but additionally allow for going
+    beyond P4 from a network programmability PoV.</p>
+
+    <h3>So Where Does P4TC Play?</h3>
+
+    <p>A major objective of P4TC is to use P4 to prescribe datapaths and additionally
+    address all the challenges mentioned earlier in regards to the current kernel
+    offload approach.</p>
+
+    <p>For starters: P4 allows us to expose hardware features using a custom defined
+    datapath without dealing with the consequence of constrained kernel datapaths.
+    This provides us with an opportunity to describe only the features we need in
+    the hardware and no more. P4TC provides the datapath semantics that expose P4
+    abstraction.</p>
+
+    <p>From a P4TC perspective, the hardware implementation <i>does not</i> have to be P4
+    capable as long as it abstracts out the behavior described in a specified P4
+    program. The user/control plane interfaces with the (P4) abstraction of a
+    pipeline and how the packet flows across MATs - and it is upto the vendor's
+    driver to transform that abstraction and its associated objects to its hardware
+    specifics.</p>
+
+    <p>To address the upstream process challenge mentioned earlier:
+    P4TC provides stability by outsourcing the datapath abstraction semantics to P4
+    while maintaing the well understood offload semantics provided by TC.</p>
+
+    <p>P4TC also introduces <i>user and kernel independence</i> for additional extensions to
+    the MAT architecture. This helps us not having to deal with kernel or user
+    space fixed abstractions.</p>
+
+    <h4>How Does A P4 Runtime Differ From Classical TC?</h4>
+
+    <p>Other than reusing the <i>tc</i> utility, P4TC reuses the offload mechanisms exposed
+    by TC. To compare, the table below illustrate on the left hand
+    how one would install MAT entries using flower and on the right handside with P4TC.</p>
+
+    <table>
+      <tr>
+        <td>TC Flower: Software and Hardware Control</td>
+        <td>P4TC: Software and Hardware Control</td>
+      </tr>
+      <tr>
+        <td valign="top"><img src="blogs/images/tc-flower-offload.png"></td>
+        <td valign="top"><img src="blogs/images/p4tc-table-update.png"></td>
+      </tr>
+    </table>
+
+    <p>There are a few subtle differences to note: The TC Flower approach
+    is "rules based" and P4TC takes a more "tables based" approach.
+    Typically for offload purposes the driver will transform map a TC flower
+    "rule" into a "table entry" using the rule's chain ID, priority (and combination
+    of masks).
+    Whereas P4TC directly deals with table entries which are roughly mapped to a
+    classical H/W TCAM but could be SRAM, DRAM, etc.</p>
+
+    <p>The second difference is that the table in P4TC belongs to the system/ASIC i.e
+    it is not tied to a netdev/port but rather global and can be shared by many netdevs;
+    observe that, in contrast to flower, when referencing a table entry (such as in
+    the creation of a table entry above) there is no mention of the <i>netdev</i> or even
+    <i>tc block</i>. From that perspective, the semantics are closer to <i>tc block</i> PoV
+    with the exception that a P4TC table can appear in multiple tc blocks as well as
+    (in/egress) directions.</p>
+
+    <p>Other than that you get the same look and feel programming P4TC tables as if you
+    are programming flower entries. Note: This look-and-feel is intentional so that
+    someone who is familiar with flower can adapt quickly to p4tc.</p>
+
+    <h4>Ok, So Then How Would A P4TC Datapath Look Like At Runtime?</h4>
+
+    <p>P4TC implements a TC classifier to manage a P4 pipeline lifetime from instantiation
+    all the way to destruction.</p>
+
+    <table>
+      <tr>
+        <td>P4 Pipeline Datapath</td>
+        <td>P4 Runtime Control</td>
+      </tr>
+      <tr>
+        <td valign="top"><img src="blogs/images/p4tc-runtime-pipeline.png"></td>
+        <td valign="top"><img src="blogs/images/p4tc-table-update.png"></td>
+      </tr>
+    </table>
+
+    <p>The figure on the left above illustrates how a P4TC datapath operates after instantiation.
+    Everything in greenish color (the tc eBPF code, XDP eBPF code, the control json
+    helper, as well as the hardware program) is compiler generated. Note that
+    the placement of the different parts of the pipeline is entirely up to the
+    operator. IOW, you could have software at XDP only or tc only etc or you could
+    have it in all 3 locations when it makes sense.</p>
+
+    <h5>Kernel Independence</h5>
+
+    <p>The software datapath and control artificats are all generated by the open
+    source <i>P4C</i> compiler which supports a P4TC backend.
+    Unlike flower, no new kernel code is needed for any P4 program regardless of
+    the datapath behavior described or objects(headers, parsers, etc) introduced.</p>
+
+    <h5>User Space Independence</h5>
+
+    <p>P4TC also offers user-space/control independence again by virtue of the
+    <i>P4C</i> compiler.</p>
+
+    <p>The consequences of introspection are: we do not have to update iproute2 code
+    for any new headers, etc.</p>
+
+    <h5>Ok, So How Does This Simplify Things?</h5>
+
+    <p>For the non-TC savy but P4-savy folks: P4TC intends to solve the upstream process
+    bottleneck by allowing for creating a shell script which contain TC commands that
+    describe the P4 behavior and an eBPF s/w datapath with zero kernel or user space
+    changes. You do not need to be a kernel or eBPF guru either.</p>
+
+    <p>For the TC savy folks, we try very hard to maintain TC point of view.</p>
+
+    <h3>So I Am Intrigued - How Do I Get <b>myprog</b> <i>Installed</i> Into The Kernel?</h3>
+
+    <p>You can use the open source <i>P4C</i> compiler which supports
+    generating P4TC templates. The workflow is described below:</p>
+
+    <table>
+      <tr>
+        <td>Software And Hardware: Creating And Loading P4TC Program</td>
+      </tr>
+      <tr>
+        <td valign="top"><img src="blogs/images/p4tc-compile-workflow-install.png"></td>
+      </tr>
+    </table>
+
+    <h4>Deployment Model</h4>
+
+    <p>The diagram below illustrates the different models of deployment of an I/DPU(XPU) for hardware offload.
+    There are two ways the P4 datapath can be deployed. We refer to these as <i>XPU mode</i> and <i>smartNIC mode</i> (depending on the vendor they may refer to it as "functional NIC").</p>
+
+    <img src="blogs/images/Port-Rep-xpu.png">
+
+    <p>In the <i>XPU mode</i> the control plane resides in the cpu complex on the NIC (ARM cores in the diagram). So the CRUD commands to manipulate the P4 objects (tables or actions) are issued from the ARM cores. It also means your s/w exception path or pipeline is on the ARM cores.</p>
+
+    <p>So why is <i>XPU mode</i> prefered?</p>
+    <ul>
+      <li>Zero Trust of the host.</li>
+      <li>Saving CPU cycles on the host.</li>
+      <li>Power savings.</li>
+    </ul>
+
+    <p>See the original document for full details and references.</p>
+
+  </div>
+
+  <br>
+  <br>
+  <br>
+  <br>
+  <p><small><a href="mailto:p4tc-discussions@netdevconf.info">Contact Us</a></small></p>
+</body>
+
+</html>
