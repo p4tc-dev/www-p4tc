@@ -436,7 +436,13 @@ $TC p4template update pipeline/redirect_l2 state ready</code></pre>
           <li>has a 32 bit exact key with a keyfield known as "srcAddr" which interpreted as a type <i>ipv4</i></li>
           <li>has two actions:
             <ul>
-              <li>Action "ingress/send_nh" which is labelled as "TableOnly" (meaning it can only be used as a table action and not as default) takes 3 parameters: <i>port_id</i> (type <i>dev</i>), <i>srcMac</i> (type <i>macaddr</i>), and <i>dstMac</i> (type <i>macaddr</i>).</li>
+              <li>Action "ingress/send_nh" which is labelled as "TableOnly" (meaning it can only be used as a table action and not as default) takes 3 parameters:
+                <ul>
+                  <li>parameter <i>port_id</i> of type <i>dev</i></li>
+                  <li>parameter <i>srcMac</i> of type <i>macaddr</i></li>
+                  <li>parameter <i>dstMac</i> of type <i>macaddr</i></li>
+                </ul>
+              </li>
               <li>Action "ingress/drop" which takes no parameters. This action is labelled as "default_miss_action" - meaning if an entry is not found in the table this action will be executed.</li>
             </ul>
           </li>
@@ -769,15 +775,17 @@ $CLI $PNAME subscribe table filter $TNAME cmd = create &amp;&amp; param.act.ingr
     <p><i>@tc_acl</i> annotation is used to define the object access control information. The compiler uses this information to provide details to the template and json introspection file. The format <i>CRUDXPS</i>(Create, Read, Update, Delete, eXecute, Publish, Subscribe) in quotes is used in the annotation in the form of <b>"Control plane ACL":"Datapath ACL"</b>. When not specified, the default values are assumed. For the control plane the default is <u><b>CRUDS</b></u> and for the datapath the default is <u><b>RXP</b></u>. The compiler generates the numeric values in the introspection as well as template outputs.</p>
 
     <p>At the moment the only events supported are announcements to changes to the shared control data. For example, if an update happens from either the control or datapath, then the control plane applications which subscribed to events will get notified. Current events that can be generated are for <i>Create</i>, <i>Update</i> and <i>Delete</i> operations to an extern. All published events in P4TC carry an <i>identity</i> "whodunnit" field which indicates who/what entity initiated the change for which the event is reported.</p>
+<p>For the sake of this article, lets focus on tables; however, everything discussed here applies to externs as well (to be discussed in the next article).</p>
 
-    <p>For the sake of this article, lets focus on tables; however, everything discussed here applies to externs as well (to be discussed in the next article).</p>
+<p>There are two types of table permissions:</p>
+<ul>
+  <li>Table permissions which are a property of the table (think directory in file systems). These are defined by the template.</li>
+  <li>Table entry permissions which are specific to a table entry (think a file in a directory).</li>
+</ul>
 
-    <p>There are two types of table permissions:</p>
-    <ul>
-      <li>Table permissions which are a property of the table (think directory in file systems). These are defined by the template.</li>
-      <li>Table entry permissions which are specific to a table entry (think a file in a directory).</li>
-    </ul>
+<p>Furthermore in both cases the permissions are split into datapath vs control path. The template definition can set either one. For example, one could allow for the datapath to add/delete table entries in case of PNA add-on-miss is needed.</p>
 
+<h4>Table Permissions</h4>
     <p>Furthermore in both cases the permissions are split into datapath vs control path. The template definition can set either one. For example, one could allow for the datapath to add/delete table entries in case of PNA add-on-miss is needed.</p>
 
     <h4>Table Permissions</h4>
