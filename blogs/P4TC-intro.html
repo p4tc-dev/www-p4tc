@@ -227,8 +227,7 @@
   <div id="content">
     <h1>Building Robust Control Planes With P4TC API</h1>
 
-    <p>Modern network device architectures are traditionally split into three layers: hardware, the software datapath, and the software control plane.
-    Packet processing architectures on top of these layers are frequently tailored to the unique requirements of specific applications and organizations often with high degree of customization varying significantly based on internal culture and technical expertise. This is Conway’s Law in action: the system’s design mirrors the communication structure of the organization that builds it.</p>
+    <p>Modern network device architectures are traditionally split into three layers: hardware, the software datapath, and the software control plane. Packet processing architectures on top of these layers are frequently tailored to the unique requirements of specific applications and organizations often with high degree of customization varying significantly based on internal culture and technical expertise. This is Conway’s Law in action: the system’s design mirrors the communication structure of the organization that builds it.</p>
 
     <p>However, this customization often clashes with the rigid standards of upstream development and technological limitations:</p>
     <ul>
@@ -236,8 +235,7 @@
       <li><b>Software</b> (both datapath and control) is often trapped by inflexible deployment processes and long release cycles.</li>
     </ul>
 
-    <p>Today, implementing a new "custom" protocol requires a simultaneous, ground-up changes or worse a redesign across the entire stack—hardware ASICs, kernel code, and control logic.
-    <a href="https://www.p4tc.dev/">P4TC (P4 Traffic Control)</a> breaks this cycle. By using <a href="https://www.p4.org/">P4</a> as a standardized datapath definition language, P4TC ensures that <b>no new kernel or user-space code is needed to define a new datapath.</b> We enable the "scratching their own itch" principle, allowing Conway's Law to thrive without the technical debt of traditional integration.</p>
+    <p>Today, implementing a new "custom" protocol requires a simultaneous, ground-up changes or worse a redesign across the entire stack—hardware ASICs, kernel code, and control logic. <a href="https://www.p4tc.dev/">P4TC (P4 Traffic Control)</a> breaks this cycle. By using <a href="https://www.p4.org/">P4</a> as a standardized datapath definition language, P4TC ensures that <b>no new kernel or user-space code is needed to define a new datapath.</b> We enable the "scratching their own itch" principle, allowing Conway's Law to thrive without the technical debt of traditional integration.</p>
 
     <p>This article, the third in our series, explores how P4TC leverages P4 to solve the final piece of the puzzle: building robust, customizable control plane interfaces. The article provides some brief background context, however, the reader would benefit by looking at the previous two articles. The <a href="blogs/why-p4tc.html">first article</a> discusses overall P4TC history, motivation and architecture. The <a href="blogs/ctrl-api-abstraction-part1.html">second article</a> describes the netlink architecture.</p>
 
@@ -255,7 +253,7 @@
     </ol>
 
     <figure>
-      <img src="blogs/images/p4tc-sw-hw-workflow.png" alt="P4TC Workflow" width="500" height="400"/>
+      <img src="blogs/images/p4tc-sw-hw-workflow.png" alt="P4TC Workflow" width="500" height="400">
       <figcaption>Figure 1: P4TC Workflow</figcaption>
     </figure>
 
@@ -302,7 +300,7 @@
 
     <p>Let’s look at a simple example: <code>redirect_l2</code> (<a href="https://github.com/p4tc-dev/p4tc-examples-pub/tree/main/simple/redirect_l2">source</a>). This program parses Ethernet IPv4 packets and uses the source IP to look up a next-hop in <code>nh_table</code>. On a hit, it rewrites MAC addresses and redirects the packet; on a miss, it drops the packet.</p>
 
-    <pre><code>control ingress(
+    <pre><code class="language-P4">control ingress(
     inout my_ingress_headers_t  hdr,
     inout my_ingress_metadata_t meta,
     in    pna_main_input_metadata_t  istd,
@@ -310,7 +308,7 @@
 )
 {
     // @tc_type maps P4 types to Linux-native formats (dev, macaddr, etc.)
-    action send_nh(@tc_type("dev") PortId_t port_id, @tc_type("macaddr") bit<48> dmac, @tc_type("macaddr") bit<48> smac) {
+    action send_nh(@tc_type("dev") PortId_t port_id, @tc_type("macaddr") bit&lt;48&gt; dmac, @tc_type("macaddr") bit&lt;48&gt; smac) {
          hdr.ethernet.srcAddr = smac;
          hdr.ethernet.dstAddr = dmac;
          send_to_port(port_id);
@@ -336,6 +334,9 @@
     apply {
         nh_table.apply();
     }
+....
+...
+..
 }</code></pre>
 
     <h3>Key Annotations in <code>redirect_l2</code>:</h3>
@@ -347,9 +348,9 @@
 
     <h2>P4TC Program Provisioning</h2>
 
-    <p>The compiler produces a template script to manifest the control objects required for the P4 runtime to interface with the hardware and software datapaths (refer to <b>Figure 2</b>). This bash script utilizes the tc utility to execute netlink commands within the kernel. For the <i>redirect_l2</i> program, the output is as follows:</p>
+    <p>The compiler produces a template script (refer to <i>step #3</i> in Figure 1) to manifest the control objects required for the P4 runtime to interface with the hardware and software datapaths (refer to <b>Figure 2</b>). This bash script utilizes the tc utility to execute netlink commands within the kernel. For the <i>redirect_l2</i> program, the output is as follows:</p>
 
-    <pre><code>#!/bin/bash -x
+    <pre><code class="language-bash">#!/bin/bash -x
 
 set -e
 
@@ -384,7 +385,7 @@ $TC p4template update pipeline/redirect_l2 state ready</code></pre>
     <h2>P4TC Introspection</h2>
     <p>Based on the P4 program above, the compiler generates a <b>JSON introspection file</b> as illustrated in Figure 1. This file allows the runtime to understand the structure of the P4 program without needing hardcoded logic (see Figure 2).</p>
 
-    <pre><code>{
+    <pre><code class="language-json">{
   "schema_version" : "1.0.0",
   "pipeline_name" : "redirect_l2",
   "tables" : [
@@ -435,8 +436,8 @@ $TC p4template update pipeline/redirect_l2 state ready</code></pre>
           <li>has a 32 bit exact key with a keyfield known as "srcAddr" which interpreted as a type <i>ipv4</i></li>
           <li>has two actions:
             <ul>
-              <li>Action "ingress/send_nh" which is labelled as "TableOnly" takes 3 parameters: <i>port_id</i>, <i>srcMac</i>, and <i>dstMac</i>.</li>
-              <li>Action "ingress/drop" which takes no parameters and is labelled as "default_miss_action".</li>
+              <li>Action "ingress/send_nh" which is labelled as "TableOnly" (meaning it can only be used as a table action and not as default) takes 3 parameters: <i>port_id</i> (type <i>dev</i>), <i>srcMac</i> (type <i>macaddr</i>), and <i>dstMac</i> (type <i>macaddr</i>).</li>
+              <li>Action "ingress/drop" which takes no parameters. This action is labelled as "default_miss_action" - meaning if an entry is not found in the table this action will be executed.</li>
             </ul>
           </li>
         </ul>
@@ -448,23 +449,24 @@ $TC p4template update pipeline/redirect_l2 state ready</code></pre>
 
     <h1>Introducing The P4TC API</h1>
 
-    <p>The P4TC API is a <b>resource-oriented Netlink interface</b>.
-    The interface follows a REST-inspired paradigm where every P4 object is a "noun" identified by a path, and operations are "verbs" aligning with CRUD+ semantics (Create, Read, Update, Delete, plus Event Subscription):</p>
+    <p>The P4TC API is a <b>resource-oriented Netlink interface</b>. The interface follows a REST-inspired paradigm where every P4 object is a "noun" identified by a path, and operations are "verbs" aligning with CRUD+ semantics (Create, Read, Update, Delete, plus Event Subscription) with additional verbs for event subscription and unsubscription:</p>
 
     <ul>
       <li><b>Create:</b> Add one or more table entries or extern instances.</li>
       <li><b>Read:</b> Retrieve one or more table entries or extern instances.</li>
       <li><b>Update:</b> Modify existing table entries or extern instance.</li>
       <li><b>Delete:</b> Delete one or more table entries or extern instances.</li>
-      <li><b>Subscribe:</b> Subscribe to a datapath event.</li>
-      <li><b>Unsubscribe:</b> Unsubscribe from a datapath event.</li>
+      <li><b>Subscribe</b>: Subscribe to a datapath event.</li>
+      <li><b>Unsubscribe</b>: Unsubscribe from a datapath event.</li>
     </ul>
 
-    <p>This approach allows for a small set of verbs but an infinite number of nouns, avoiding code churn every time a new object is introduced.</p>
+    <p>This approach allows to have a small set of verbs but infinite number of nouns, and is taken to avoid need to churn code every time a new object is introduced - which is different compared to the traditional netlink rpc flavor approach where the verb is intertwined with the noun (see discussion in: <a href="blogs/ctrl-api-abstraction-part1.html">Part 1 of this series</a>)</p>
+
+    <p>This allows generic control applications (like <code>iproute2/tc</code>) to manage any P4 program without needing to be recompiled for specific P4 logic.</p>
 
     <h2>P4TC CRUD+ Grammar</h2>
 
-    <p>The general syntax is of the form: &lt;<b>VERB</b>&gt; &lt;<b>NOUN</b>&gt; [<b>DATA</b>]+</p>
+    <p>The following BNF grammar applies to API. The general syntax is of the form: &lt;<b>VERB</b>&gt; &lt;<b>NOUN</b>&gt; [<b>DATA</b>]+</p>
 
     <h3>The Grammar at a Glance</h3>
     <pre><code>&lt;COMMAND&gt;    ::= &lt;VERB&gt; &lt;NOUN&gt; [&lt;DATA&gt;]+
@@ -478,147 +480,877 @@ $TC p4template update pipeline/redirect_l2 state ready</code></pre>
     <h3>Understanding the Components</h3>
 
     <ul>
-      <li><b>Verbs:</b> standard CRUD operations plus <b>subscribe/unsubscribe</b>.</li>
-      <li><b>Nouns:</b> objects identified by their type (<code>table</code> or <code>extern</code>) and path.</li>
-      <li><b>Keys:</b> used for targeted lookups (e.g., a specific IP address).</li>
-      <li><b>Filters:</b> SQL-like selectors used for mass operations or subset selection.</li>
-      <li><b>Data:</b> parameters required for <code>create</code> or <code>update</code>.</li>
+      <li><b>Verbs:</b> are standard CRUD operations plus <b>subscribe/unsubscribe</b> for datapath events.</li>
+      <li><b>Nouns:</b> are objects are identified by their type (<code>table</code> or <code>extern</code>) and their path in the P4 program.</li>
+      <li><b>Keys:</b> are used for targeted lookups (e.g., a specific IP address in a table).</li>
+      <li><b>Filters:</b> are powerful, SQL-like selectors used to perform mass operations (Read, Update, Delete) on entries that match specific criteria as well as selecting subsets of events (Subscribe).</li>
+      <li><b>Data:</b> The parameters required for <code>create</code> or <code>update</code> operations (e.g., action and its parameters like <code>port_id</code>).</li>
     </ul>
+
+    <h3>More Details Of The Grammar</h3>
+
+    <p>If as a human, you understood the BNF you can skip this section.</p>
+
+    <p>A <b>NOUN</b> consists of: <b>OBJTYPE</b> of the object followed by zero or more <b>PATH</b> to the object.</p>
+
+    <p><b>OBJTYPE</b> is one of: <b>table</b> or <b>extern</b></p>
+
+    <p><b>PATH</b> is a path to the object which may optionally have a <i>key</i> or a <i>filter</i> qualifier. <b>read</b> and <b>delete</b> can have zero or more <b>PATH</b>. When no <b>PATH</b> is present on the object it implies every entity in that object; for example all entries of a table object.</p>
+
+    <p>A <i>key</i> is used to do lookups and can only be a table key or an extern parameter annotated with attribute <code>@tc_key</code> in the generated json file. A <i>key</i> can be used in verbs <b>create</b>, <b>read</b>, <b>update</b>, and <b>delete</b>.</p>
+
+    <ul>
+      <li>A key cannot be used in presence of a filter i.e they are mutually exclusive.</li>
+      <li>When a key is used with <b>create</b>, it is an instruction to create a table or extern entry. A <b>create</b> MUST always have a key. A batch of entries can be created but each MUST carry a unique key - the only exception to key uniqueness is when a table allows entries to carry a priority field. In such a case the lookup key does not need to be unique because the priority field can be further used to disambiguate.</li>
+      <li>When a key is optionally used with <b>read</b>, it is an instruction to read a specific table or extern entry specified by the key. When a key is missing in a <b>read</b> it implies the whole object (<i>dump</i>). Multiple keys can be present in a <b>read</b> - implying a batch of specific entries.</li>
+      <li>When a key is used with <b>update</b>, it is an instruction to update a table or extern entry. An <b>update</b> MUST always have a key and action parameterization. Multiple keys can be present in an <b>update</b> to represent a batch of entries to be updated.</li>
+      <li>When a key is used with <b>delete</b>, it is an instruction to delete table or extern entry. When a key is missing in a <b>delete</b> it implies the whole object (<i>flush</i>). Multiple keys can be present in a <b>delete</b> - implying a batch of specific entries.</li>
+      <li>A key cannot be used with <b>subscribe</b> or <b>unsubscribe</b>.</li>
+    </ul>
+
+    <p>A <i>filter</i> is like an sql <i>select</i> construct. It can be used in verbs <b>read</b>, <b>update</b>, <b>delete</b> and <b>subscribe</b> verbs. A <i>filter</i> description can use both table keys and action parameters as well as metadata unrelated to the control objects.</p>
+    <ul>
+      <li>A filter can not be used with <b>create</b></li>
+      <li>A filter cannot be used with a key.</li>
+      <li>When a filter is used with <b>read</b>, it is an instruction to read table or extern entries that match the filter description.</li>
+      <li>When a filter is used with <b>update</b>, it is an instruction to update all table or extern entries that match the filter description.</li>
+      <li>When a filter is used with <b>delete</b>, it is an instruction to delete all table or extern entries that match the filter description</li>
+      <li>When used with the <b>subscribe</b> verb, the <i>filter</i> can include, in addition to a description of the table/extern and associated parameters, a verb in its construct. The verb can only be one of: <b>create</b>, <b>update</b> or <b>delete</b>.</li>
+      <li>A filter cannot be used with <b>unsubscribe</b>.</li>
+    </ul>
+
+    <p><b>DATA</b> is optional depending on the verb. Only <b>create</b> and <b>update</b> have <b>DATA</b>. <b>DATA</b> MUST be qualified by a key.</p>
 
     <h3>Illustrating The P4TC CRUD+ Grammar</h3>
 
-    <pre><code>CLI="./p4tccli"
+    <p>Using a conceptual command-line tool <code>p4tccli</code>, here is how you would interact with the <code>redirect_l2</code> program (We'll discuss the exact API details later):</p>
+
+    <pre><code class="language-bash">CLI="./p4tccli"
 PNAME="redirect_l2"
 TNAME="ingress/nh_table"
 
-# Subscribe to all events on table $TNAME
+#Subscribe to all events on table $TNAME. You will get back a subscription ID ($SUB_ID holds subscription id)
+# "all events" means: Any time a table entry is created, updated or deleted you will get notification
 $CLI $PNAME subscribe table $TNAME
 
-# Create table entry
+#Create table entry with key srcAddr 192.168.1.1 (will generate create event)
+#action ingress/send_nh to rewrite dmac to 00:11:22:33:44:55 smac to 66:77:88:99:AA:BB and send out port eth0
 $CLI $PNAME create table $TNAME key srcAddr 192.168.1.1 action ingress/send_nh port_id eth0 dmac 00:11:22:33:44:55 smac 66:77:88:99:AA:BB
 
-# Read back table entry
+#Create table entry with key srcAddr 192.168.1.2 (will generate create event)
+#action ingress/send_nh to drop
+$CLI $PNAME create table $TNAME key srcAddr 192.168.1.2 action ingress/send_nh port_id eth0 dmac 00:11:55:44:33:22 smac 66:78:89:9A:AA:BB
+
+#Read back table entry with key srcAddr 192.168.1.1
 $CLI $PNAME read table $TNAME key srcAddr 192.168.1.1
 
-# Dump all entries
+#Dump all the table entries (should see two entries)
 $CLI $PNAME read table $TNAME
 
-# Update table entry to drop
+#Update table entry for 192.168.1.1 to drop on match (will generate update event)
 $CLI $PNAME update table $TNAME key srcAddr 192.168.1.1 action ingress/drop
 
-# Delete the table entry
+#Delete the table entry for 192.168.1.1 (will generate a delete event)
 $CLI $PNAME delete table $TNAME key srcAddr 192.168.1.1
 
-# Flush all entries
-$CLI $PNAME delete table $TNAME</code></pre>
+#Flush all table entries (will generate one delete event)
+$CLI $PNAME delete table $TNAME
+
+#unsubscribe from all events on table $TNAME
+$CLI $PNAME subscribe table $TNAME id $SUB_ID</code></pre>
 
     <h2>P4TC API Optimizations</h2>
 
-    <p>To handle high-scale networking, P4TC offers: <b>Sharding</b>, <b>Batching</b>, and <b>Filtering</b>.</p>
+    <p>To handle high-scale networking requirements, the P4TC control plane offers three primary scaling features: <b>Sharding</b>, <b>Batching</b>, and <b>Filtering</b>.</p>
 
     <h3>1. P4TC Control Sharding</h3>
-    <p>Netlink allows concurrent access. Multiple threads can manage independent P4 objects or shard table entries across threads to increase update rates.</p>
+
+    <p>Because P4TC uses Netlink, it inherits the ability to handle concurrent access. Multiple applications or threads can access control objects in the kernel simultaneously.</p>
+
+    <ul>
+      <li><b>Parallel Management:</b> Different threads can manage independent P4 objects or P4 programs (e.g., one thread manages <code>nh_table</code> while another manages a counter extern).</li>
+      <li><b>Use Case:</b> In a multi-core control plane, you can shard your table entries across threads. For example, Thread A manages entries for the <code>10.0.0.0/8</code> prefix, while Thread B handles <code>192.168.0.0/16</code>, dramatically increasing the overall update rate.</li>
+    </ul>
+
 
     <h3>2. P4TC CRUD+ Batching</h3>
-    <p>Batching groups multiple commands into a single system call, reducing user-kernel crossing overhead.</p>
+    <p>Batching allows you to group multiple CRUD commands into a single system call. This significantly reduces the overhead of crossing the user-kernel boundary.</p>
 
-    <pre><code># Batched creation of three entries
+    <h4>Batching Create</h4>
+
+    <p>You can send a single request to create dozens or hundreds of table entries at once.</p>
+
+    <pre><code class="language-bash">#lets subscribe to the table's events to track what is going on
+$CLI $PNAME subscribe table $TNAME
+#save the subscription ID
+SUB_PID=$!
+sleep 1
+SUB_ID=$(grep "Subscription ID:" sub.out | awk '{print $3}')
+echo "Saved Subscription ID: $SUB_ID"
+
+#Batched creation of three entries in a single call (we should see 3 create events)
 $CLI $PNAME create table $TNAME \
   key srcAddr 192.168.1.1 action ingress/send_nh port_id eth1 dmac 00:AA:BB:CC:DD:EE smac 11:22:33:44:11:11 \
   key srcAddr 192.168.1.2 action ingress/send_nh port_id eth1 dmac 00:AA:BB:CC:DD:EE smac 11:22:33:44:11:22 \
-  key srcAddr 192.168.1.3 action ingress/drop</code></pre>
+  key srcAddr 192.168.1.3 action ingress/drop
+
+#dump the table (should see 3 entries)
+$CLI $PNAME read table $TNAME</code></pre>
+
+    <h4>Batching Read With Keys</h4>
+
+    <p>Similarly, you can update or delete multiple specific entries in one transaction by providing a list of keys. Later on we'll show another approach using filters.</p>
+
+    <pre><code class="language-bash">$CLI $PNAME read table $TNAME \
+    key srcAddr 192.168.1.2 \
+    key srcAddr 192.168.1.3</code></pre>
+
+    <h4>Batching Update</h4>
+
+    <p>Similarly, you can update multiple specific entries in one transaction by providing a list of keys and what to portions of the data to change. Later on we'll show another approach using filters.</p>
+
+    <pre><code class="language-bash">#Update batched table entries (should see two update events)
+$CLI $PNAME update table $TNAME \
+  key srcAddr 192.168.1.2 action ingress/send_nh port_id eth0 dmac 00:BB:CC:DD:EE:11 smac 00:22:33:44:55:66 \
+  key srcAddr 192.168.1.3 action ingress/send_nh port_id eth0 dmac FF:EE:DD:CC:BB:AA smac 99:88:77:66:55:44</code></pre>
+
+    <h4>Batching Delete With Keys</h4>
+
+    <p>Similarly, you can selectively delete multiple specific entries in one transaction by providing a list of keys. Note: if we didnt specify the keys below we can delete the whole table.</p>
+
+    <p>Later on we'll show another approach using filters.</p>
+
+    <pre><code class="language-bash">#selectively delete these two entries (we should see two delete events)
+$CLI $PNAME delete table $TNAME \
+    key srcAddr 192.168.1.2 \
+    key srcAddr 192.168.1.3</code></pre>
 
     <h3>3. P4TC CRUD+ Filters</h3>
-    <p>Filters allow mass operations based on data values rather than just keys (e.g., <code>WHERE port_id = eth0</code>).</p>
 
-    <pre><code># Delete all entries with send_nh.port_id = "eth1"
+    <p>Filters are the most powerful scaling feature in P4TC. They allow you to perform mass operations based on data values rather than just keys, similar to an SQL <code>WHERE</code> clause. Filters follow a DSL - which requires a separate discussion; our goal in this document is to illustrate the power of using such filters to scale control operations.</p>
+
+    <p>Filters apply to different constructs full or partial table keys and extern keys, full or partial table entry action parameter values, and extern parameter values.</p>
+
+    <p>For purposes of illustration, consider a scenario where the "ingress/nh_table" contains one million entries. Within this table, assume that 50,000 entries designate "eth0" as their <i>port_id</i> action, while another 50,000 entries are directed to <i>port_id</i> "eth1".</p>
+
+    <h4>Selective Mass <i>Read</i>/<i>Update</i>/<i>Delete</i> Operations With Filters</h4>
+
+    <p>Let's illustrate these features using filtering for action <i>send_nh</i> <i>port_id</i> parameter value.</p>
+
+    <pre><code class="language-bash">#Subscribe to table events with filter for $TNAME so we can keep track of state change
+$CLI $PNAME subscribe table $TNAME  &gt; sub.out 2&gt;&amp;1 &amp;
+SUB_PID=$!
+SUB_ID=$(grep "Subscription ID:" sub.out | awk '{print $3}')
+
+#Read table with filter - should return 50K entries
+$CLI $PNAME read table $TNAME filter param.act.ingress.send_nh.port_id = eth0
+
+# Update entries with send_nh.port_id = "eth0" to change the action to a drop. Should update 50K entries (we will get 50K events)
+$CLI $PNAME update table $TNAME filter param.act.ingress.send_nh.port_id = eth0 action ingress/drop
+
+# Delete all entries with send_nh.port_id = "eth1". should delete 50K entries (we will get 50K events)
 $CLI $PNAME delete table $TNAME filter param.act.ingress.send_nh.port_id = eth1
 
-# Advanced: Delete idle entries
-$CLI $PNAME delete table $TNAME filter msecs_since > 30000</code></pre>
+$CLI $PNAME unsubscribe table $TNAME id $SUB_ID
+kill $SUB_PID
+rm sub.out</code></pre>
 
-    <h1>P4TC Runtime API: Identity And Permissions</h1>
+    <h4>Filtered Subscriptions</h4>
 
-    <p><b>Identity</b> is a 32-bit ID used to identify the source of updates. Reserved IDs include:</p>
+    <p>As may be observed above we receive a lot of events when we are doing mass update/delete. We can mitigate this with a control app only subscribing to a subset of events. To scale this further we can have multiple applications or threads filtering selective events.</p>
+
+    <pre><code class="language-bash">#Subscribe to table events with filter for matching only when action port_id = "eth0"
+$CLI $PNAME subscribe table $TNAME param.act.ingress.send_nh.port_id = \"eth0\" &gt; sub.out 2&gt;&amp;1 &amp;
+
+#Flush table entries. We should see 50K delete events (with action port_id = "eth0") even though we have deleted 1M entries
+$CLI $PNAME delete table $TNAME
+
+$CLI $PNAME unsubscribe table $TNAME id $SUB_ID</code></pre>
+
+    <h4>More Advanced Filters</h4>
+
+    <p>P4TC filters support complex expressions, metadata, and logical operators (<code>&amp;&amp;</code>, <code>||</code>, <code>!</code>).</p>
+    <ul>
+      <li><b>Time-based:</b> <code>delete table nh_table filter "msecs_since &gt; 30000"</code> (Delete entries which have been idle for &gt; 30s).</li>
+      <li><b>Complex logic:</b> <code>read table nh_table filter "param.port_id = eth0 || param.port_id = eth1"</code></li>
+    </ul>
+
+    <pre><code class="language-bash">#Read all entries where the action parameter for port_id is not eth0
+CLI $PNAME read table $TNAME filter param.act.ingress.send_nh.port_id != eth0
+
+#Delete table entries which have not see any activity for over 30 seconds
+$CLI $PNAME delete table $TNAME filter msecs_since &gt; 30000
+
+#Read entries which have port_id = eth0 but last used &lt; 10s ago
+$CLI $PNAME read table $TNAME filter param.act.ingress.send_nh.port_id = eth0 &amp;&amp; msecs_since &lt; 10000
+
+#read entries that have port_id as eth0 or eth1
+$CLI $PNAME read table $TNAME filter param.act.ingress.send_nh.port_id = eth0 || param.act.ingress.send_nh.port_id = eth1
+
+#update all entries with port_id = eth0 and dmac != b8:ce:f6:4b:68:35 that have not seen traffic in more than 30 seconds to have a new action drop
+$CLI $PNAME update table filter $TNAME (param.act.ingress.send_nh.port_id = eth0 &amp;&amp; param.act.ingress.send_nh.dmac != b8:ce:f6:4b:68:35 &amp;&amp; msecs_since &gt; 30000) action ingress/drop
+
+#Subscribe to table events with filter for matching only when action port_id = "eth0" and it is a **create** verb
+$CLI $PNAME subscribe table filter $TNAME cmd = create &amp;&amp; param.act.ingress.send_nh.port_id = \"eth0\"</code></pre>
+
+    <h2>P4TC Runtime API: Identity And Permissions</h2>
+
+    <p><b>Identity</b> is a 32 bit id that is used to identify the control plane source that is updating table or extern state. In the long run we would like to see some authentication and authorization of each identity before they are allowed to interact with the datapath. At the moment there are default reserved IDs which are defined in file <i>/etc/iproute2/p4tc_entities</i></p>
 
     <table>
       <thead>
-        <tr><th>ID</th><th>Entity</th><th>Description</th></tr>
+        <tr>
+          <th>ID</th>
+          <th>Entity</th>
+          <th>Description</th>
+        </tr>
       </thead>
       <tbody>
-        <tr><td>0</td><td>unspec</td><td>Unspecified</td></tr>
-        <tr><td>1</td><td>kernel</td><td>Linux Kernel</td></tr>
-        <tr><td>2</td><td>tc</td><td>Traffic Control</td></tr>
-        <tr><td>3</td><td>timer</td><td>Kernel Timer</td></tr>
+        <tr>
+          <td>0</td>
+          <td>unspec</td>
+          <td>Unspecified</td>
+        </tr>
+        <tr>
+          <td>1</td>
+          <td>kernel</td>
+          <td>Linux Kernel</td>
+        </tr>
+        <tr>
+          <td>2</td>
+          <td>tc</td>
+          <td>Traffic Control</td>
+        </tr>
+        <tr>
+          <td>3</td>
+          <td>timer</td>
+          <td>Kernel Timer</td>
+        </tr>
       </tbody>
     </table>
 
-    <h3>Object Permissions: <code>@tc_acl</code></h3>
-    <p>Permissions define access control for Control Path (Netlink) and Datapath. Format is <i>CRUDXPS</i>.</p>
+    <p>The kernel, tc and kernel timer (for dynamic entries which expire) have reserved identities. A control plane implementation can add a new set of identities by placing a file with .conf extension with <i>/etc/iproute2/p4tc_entities_d</i> Example:</p>
+
+    <pre><code>cat /etc/iproute2/p4tc_entities.d/p4tccli.conf
+186  p4tccli</code></pre>
+
+    <p>Lets dump a single entry from <i>redirect_l2</i> table <i>ingress/nh_table</i> to illustrate the different identities.</p>
+
+    <pre><code class="language-json">[
+  {
+    "pname": "redirect_l2",
+    "pipeid": 1
+  },
+  {
+    "entries": [
+      {
+        "tblname": "ingress/nh_table",
+        "key": [ {...}],
+        "actions": {
+          "actions": [{...}]
+        },
+        "create_whodunnit": "tc", //application is using TC as identity
+        "create_whodunnit_id": 2, // TC is identity 2.
+        "who_created_pid": 522,  // the entry was created by processid 522
+        "who_created": "p4tccli", // the name of the process was p4tccli
+        "update_whodunnit": "tc",
+        "update_whodunnit_id": 2,
+        "who_updated_pid": 525, // entry was updated by process id 525
+        "who_updated": "p4tccli", // the process name was "p4tcli"
+        "dynamic": "false",
+        "created": 7,        // this entry was created 7 seconds ago
+        "last_used": 6,      // it was last used 6 seconds ago
+      }
+    ]
+  }
+]</code></pre>
+
+    <h3>Object Permissions: @tc_acl</h3>
+    <p><i>@tc_acl</i> annotation is used to define the object access control information. The compiler uses this information to provide details to the template and json introspection file. The format <i>CRUDXPS</i>(Create, Read, Update, Delete, eXecute, Publish, Subscribe) in quotes is used in the annotation in the form of <b>"Control plane ACL":"Datapath ACL"</b>. When not specified, the default values are assumed. For the control plane the default is <u><b>CRUDS</b></u> and for the datapath the default is <u><b>RXP</b></u>. The compiler generates the numeric values in the introspection as well as template outputs.</p>
+
+    <p>At the moment the only events supported are announcements to changes to the shared control data. For example, if an update happens from either the control or datapath, then the control plane applications which subscribed to events will get notified. Current events that can be generated are for <i>Create</i>, <i>Update</i> and <i>Delete</i> operations to an extern. All published events in P4TC carry an <i>identity</i> "whodunnit" field which indicates who/what entity initiated the change for which the event is reported.</p>
+
+    <p>For the sake of this article, lets focus on tables; however, everything discussed here applies to externs as well (to be discussed in the next article).</p>
+
+    <p>There are two types of table permissions:</p>
+    <ul>
+      <li>Table permissions which are a property of the table (think directory in file systems). These are defined by the template.</li>
+      <li>Table entry permissions which are specific to a table entry (think a file in a directory).</li>
+    </ul>
+
+    <p>Furthermore in both cases the permissions are split into datapath vs control path. The template definition can set either one. For example, one could allow for the datapath to add/delete table entries in case of PNA add-on-miss is needed.</p>
 
     <h4>Table Permissions</h4>
-    <p>Tables have permissions for the whole object. Default is <code>CRUD--S-R--XP-</code>.</p>
+
+    <p>Tables can have permissions which apply to all the entries in the specified table. Permissions are defined for both what the control plane (user space) as well as the data path are allowed to do.</p>
+
+    <p>The permissions field is a 16bit value which will hold CRUDXPS (create, read, update, delete, execute, publish and subscribe) permissions for control and data path. Bits 13-7 will have the CRUDXPS values for control and bits 6-0 will have CRUDXPS values for data path. By default each table has the following permissions:</p>
+
+    <p><i>CRUD--S-R--XP-</i></p>
+
+    <p>Which means the control plane can perform CRUDPS operations whereas the data path can only Read and execute on the entries.</p>
+
+    <p>Lets dump the template for <i>redirect_l2</i>:</p>
+    <pre><code class="language-json">[
+  {
+    "obj": "table",
+    "pname": "redirect_l2",
+    "pipeid": 1,
+    "tblid": 1,
+    "tname": "ingress/nh_table",
+    "keysz": 32,
+    "max_entries": 262144,
+    "permissions": "CRUD--S-R--XP-",
+  }
+]</code></pre>
+
+    <p>Clearly the control plane is allowed to Create, Read, Update, Delete and Subscribe on this table whereas the datapath can Read, Execute and Publish.</p>
 
     <h4>Table Entry Permissions</h4>
-    <p>Entries inherit table permissions by default but can be overridden at runtime (e.g., for <code>const</code> entries).</p>
+
+    <p>By default all table entries inherit the table permissions. Let's <i>read</i> and entry from <i>redirect_l2</i>:</p>
+
+    <pre><code class="language-json">[
+  {
+    "pname": "redirect_l2",
+    "pipeid": 1
+  },
+  {
+    "entries": [
+      {
+        "tblname": "ingress/nh_table",
+        "tblid": 1,
+        "permissions": "CRUD--S-R--XP-",
+        "key": [
+          {
+            "keyfield": "srcAddr",
+            "id": 1,
+            "width": 32,
+            "type": "ipv4",
+            "match_type": "exact",
+            "fieldval": "192.168.1.2/32"
+          }
+        ],
+        "actions": {
+          "actions": [
+            {
+              "order": 1,
+              "kind": "redirect_l2/ingress/drop",
+              "index": 4,
+            }
+          ]
+        },
+        ...
+        ...
+      }
+    ]
+  }
+]</code></pre>
+
+    <p>however, the control plane can specify permissions when adding entries to override the table permissions. Lets say a table has <b>CRUD----R--X--</b> permissions as defined by the template. At runtime the user could add entries which are "const" - by specifying the entry's permission as <b>-R------R--X--</b>.</p>
+
+    <p>An interesting example is the famous calc program (<a href="https://github.com/p4tc-dev/p4tc-examples-pub/blob/main/calc/calc.p4">source</a>) which has constant table entries.</p>
+
+    <pre><code class="language-P4">    table calculate {
+        key = {
+            hdr.p4calc.op        : exact @name("op");
+        }
+        actions = {
+            operation_add;
+            operation_sub;
+            operation_and;
+            operation_or;
+            operation_xor;
+            operation_drop;
+        }
+        const default_action = operation_drop();
+        const entries = {
+            P4CALC_PLUS : operation_add();
+            P4CALC_MINUS: operation_sub();
+            P4CALC_AND  : operation_and();
+            P4CALC_OR   : operation_or();
+            P4CALC_CARET: operation_xor();
+        }
+    }</code></pre>
+
+    <p>Let's see the permissions on the entries for calc for one of the entries when we read it at runtime:</p>
+
+    <pre><code class="language-json">[
+  {
+    "pname": "calc",
+    "pipeid": 1
+  },
+  {
+    "entries": [
+      {
+        "tblname": "MainControlImpl/calculate",
+        "tblid": 1,
+        "prio": 64000,
+        "permissions": "-R------R--X--",
+        "key": [
+          {
+            "keyfield": "op",
+            "id": 1,
+            "width": 8,
+            "type": "bit8",
+            "match_type": "exact",
+            "fieldval": "43/0xff"
+          }
+        ],
+        "actions": {
+          "actions": [
+            {
+              "order": 1,
+              "kind": "calc/MainControlImpl/operation_add",
+              "index": 1,
+              "ref": 1,
+              "bind": 1,
+              "params": []
+            }
+          ]
+        },
+        "create_whodunnit": "tc",
+        "create_whodunnit_id": 2,
+        "who_created_pid": 628,
+        "who_created": "tc",
+        "dynamic": "false",
+        "created": 3212,
+        "last_used": 3212,
+        "tmpl_created": "true"
+    ]
+  }
+]</code></pre>
 
     <div class="note">
       <strong>NOTE</strong><br><br>
-      Read-only table entries cannot be updated or deleted at runtime. Permission denied is returned if attempted.
+      These table entries cannot be updated or deleted at runtime. Any attempt to add an entry of a table which is read-only at runtime will get a permission denied response back from the kernel.
     </div>
 
-    <h1>P4TC Runtime API: Lifecycle of Operations</h1>
+
+    <h2>P4TC Runtime API: Lifecycle of Operations</h2>
+
+    <p>This document describes the end-to-end workflow of P4TC operations, using the <code>redirect_l2</code> example for illustration.</p>
+
+    <hr>
 
     <h3>1. General Preparation Stage</h3>
-    <pre><code>// Create context and object container
-struct p4tc_runt_ctx *ctx = p4tc_runt_ctx_create(P4TC_TML_OPS_NL);
-struct p4tc_obj *obj = p4tc_obj_create("redirect_l2", P4TC_OBJ_RUNTIME_TABLE);</code></pre>
 
-    <h3>2. Implementation Patterns</h3>
+    <p>Every operation begins with initializing the environment and staging binary data.</p>
 
-    <h4>A. Create Table Entries</h4>
-    <pre><code>p4tc_obj_objname_set(obj, "ingress/nh_table");
+    <h4>A. Context and Provisioning</h4>
+    <pre><code class="language-c">// Create the runtime context (Netlink transport)
+struct p4tc_runt_ctx *ctx = p4tc_runt_ctx_create(P4TC_TML_OPS_NL);</code></pre>
+
+    <h4>B. The Object Container</h4>
+    <pre><code class="language-c">// Create a container for Table operations
+struct p4tc_obj *obj = p4tc_obj_create("redirect_l2", P4TC_OBJ_RUNTIME_TABLE);
+
+// Create a container for extern operations
+struct p4tc_obj *obj = p4tc_obj_create("myprog", P4TC_OBJ_RUNTIME_EXTERN);</code></pre>
+
+    <hr>
+
+    <h3>2. Implementation Patterns by Operation</h3>
+
+    <h4>A. Create Table Entries (including Batching)</h4>
+    <p>Stages one or more keys and actions, then sends them to the datapath in a single transaction.</p>
+    <pre><code class="language-c">p4tc_obj_objname_set(obj, "ingress/nh_table");
+
+// Entry 1
+struct p4tc_key *key1 = p4tc_make_key(obj, "192.168.1.1");
+struct p4tc_runt_tbl_attrs *entry1 = p4tc_alloc_tbl_entry(obj, key1, 0, P4TC_ENTITY_TC);
+p4tc_create_runt_act(entry1, "ingress/send_nh", "eth0", "00:11:22:33:44:55", "66:77:88:99:AA:BB");
+
+// Entry 2 (Batching)
+struct p4tc_key *key2 = p4tc_make_key(obj, "192.168.1.2");
+struct p4tc_runt_tbl_attrs *entry2 = p4tc_alloc_tbl_entry(obj, key2, 0, P4TC_ENTITY_TC);
+p4tc_create_runt_act(entry2, "ingress/drop");
+
+// Invoke and Confirm for the entire batch
+if (p4tc_create(ctx, obj, 0, NULL, NULL) == 0) {
+    p4tc_resp_handle(ctx); // Blocks for ACK
+}</code></pre>
+
+    <h4>B. Update Entries (Key or Filter)</h4>
+    <p>Updates can be targeted using either a specific entry key or a filter. These methods are mutually exclusive for a single operation.</p>
+
+    <pre><code class="language-c">// Pattern 1: Update by Key
+p4tc_obj_objname_set(obj, "ingress/nh_table");
 struct p4tc_key *key = p4tc_make_key(obj, "192.168.1.1");
 struct p4tc_runt_tbl_attrs *entry = p4tc_alloc_tbl_entry(obj, key, 0, P4TC_ENTITY_TC);
-p4tc_create_runt_act(entry, "ingress/send_nh", "eth0", "00:11:22...", "66:77:88...");
-p4tc_create(ctx, obj, 0, NULL, NULL);
+p4tc_create_runt_act(entry, "ingress/drop");
+
+p4tc_update(ctx, obj, 0, NULL, NULL);
+p4tc_resp_handle(ctx);
+
+// Pattern 2: Update by Filter (Mass Update)
+struct p4tc_obj *filter_obj = p4tc_obj_create("redirect_l2", P4TC_OBJ_RUNTIME_TABLE);
+p4tc_obj_objname_set(filter_obj, "ingress/nh_table");
+p4tc_obj_filter_set(filter_obj, "param.act.ingress.send_nh.port_id = eth0");
+
+struct p4tc_runt_tbl_attrs *f_entry = p4tc_alloc_tbl_entry(filter_obj, NULL, 0, P4TC_ENTITY_TC);
+p4tc_create_runt_act(f_entry, "ingress/drop");
+
+p4tc_update(ctx, filter_obj, 0, NULL, NULL);
 p4tc_resp_handle(ctx);</code></pre>
 
-    <h4>B. Subscription Management</h4>
-    <pre><code>p4tc_obj_objname_set(obj, "ingress/nh_table");
+    <h4>C. Get/Read Operations</h4>
+    <ul>
+      <li><b>Single Entry:</b> Use a key to fetch one specific entry.</li>
+      <li><b>Selective Entries</b>: Specify individual keys in a batch</li>
+      <li><b>Filtered Read:</b> Use a filter string to fetch matching entries.</li>
+      <li><b>Dump:</b> No key and no filter fetches all entries.</li>
+    </ul>
+    <pre><code class="language-c">// Pattern 1: Single Entry
+p4tc_obj_objname_set(obj, "ingress/nh_table");
+struct p4tc_key *key = p4tc_make_key(obj, "192.168.1.1");
+p4tc_alloc_tbl_entry(obj, key, 0, P4TC_ENTITY_TC);
+p4tc_get(ctx, obj, 0, my_callback, NULL);
+p4tc_resp_handle(ctx);
+
+// Pattern 2: Filtered Read
+struct p4tc_obj *f_obj = p4tc_obj_create("redirect_l2", P4TC_OBJ_RUNTIME_TABLE);
+p4tc_obj_objname_set(f_obj, "ingress/nh_table");
+p4tc_obj_filter_set(f_obj, "prio = 1");
+p4tc_get(ctx, f_obj, 0, my_callback, NULL);
+p4tc_resp_handle(ctx);
+
+// Pattern 3: Table Dump (No key or filter)
+p4tc_obj_objname_set(obj, "ingress/nh_table");
+p4tc_get(ctx, obj, 0, my_callback, NULL); // ROOT flag is automatically applied
+p4tc_resp_handle(ctx);</code></pre>
+
+    <h4>D. Delete Operations</h4>
+    <ul>
+      <li><b>Single Entry:</b> Use a key to remove one specific entry.</li>
+      <li><b>Selective Entries</b>: Specify individual keys in a batch</li>
+      <li><b>Filtered Delete:</b> Use a filter to remove matching entries.</li>
+      <li><b>Flush:</b> No key and no filter clears the entire table.</li>
+    </ul>
+    <pre><code class="language-c">// Pattern 1: Single Delete
+p4tc_obj_objname_set(obj, "ingress/nh_table");
+struct p4tc_key *key = p4tc_make_key(obj, "192.168.1.1");
+p4tc_alloc_tbl_entry(obj, key, 0, P4TC_ENTITY_TC);
+p4tc_del(ctx, obj, P4TC_MSG_ACK, NULL, NULL);
+p4tc_resp_handle(ctx);
+
+// Pattern 2: Filtered Delete (Mass Delete)
+p4tc_obj_filter_set(obj, "param.act.ingress.send_nh.port_id = eth1");
+p4tc_del(ctx, obj, 0, NULL, NULL);
+p4tc_resp_handle(ctx);
+
+// Pattern 3: Table Flush (No key or filter)
+p4tc_obj_objname_set(obj, "ingress/nh_table");
+p4tc_del(ctx, obj, P4TC_MSG_ACK, NULL, NULL); // ROOT flag is automatically applied
+p4tc_resp_handle(ctx);</code></pre>
+
+    <h4>E. Subscription Management</h4>
+    <p>Subscriptions can be narrowed using filters to only receive events for specific entries.</p>
+    <pre><code class="language-c">// 1. Subscribe to events on nh_table matching a filter
+p4tc_obj_objname_set(obj, "ingress/nh_table");
 p4tc_obj_filter_set(obj, "key.srcAddr = \"192.168.1.2\"");
 int sub_id = p4tc_subscribe(ctx, obj, 0, my_event_callback, NULL);
-p4tc_subscribe_resp_handle(ctx, sub_id);</code></pre>
+
+if (sub_id &gt; 0) {
+    // 2. Start background event listener
+    p4tc_subscribe_resp_handle(ctx, sub_id);
+
+    // ... wait or perform other work ...
+
+    // 3. Unsubscribe when finished
+    p4tc_unsubscribe(ctx, sub_id);
+}</code></pre>
+
+    <hr>
 
     <h3>3. Parameter and Callback Reference</h3>
-    <p>The callback lifecycle uses <code>P4TC_PHASE_SOT</code> (Start of Transaction), <code>MOT</code> (Middle), and <code>EOT</code> (End) to handle single or multi-entry results.</p>
+
+    <p>The parameters used in <code>p4tc_XXX()</code> and the logic in the resulting callback differ based on whether you are dealing with a single entry or multiple.</p>
+
+    <h4>Common Parameters</h4>
+    <ul>
+      <li><b><code>cookie</code></b>: An optional <code>__u64</code> value (or pointer cast to <code>__u64*</code>) passed to the API. It is returned unmodified to your callback, allowing you to track which request is being processed.</li>
+    </ul>
+
+    <h4>The Callback Lifecycle (<code>p4tc_callback</code>)</h4>
+    <p>The callback is triggered by <code>p4tc_resp_handle()</code> and receives the data retrieved from the datapath. The <code>trans_phase</code> and <code>p4tc_obj</code> parameters tell you the status of the retrieval.</p>
+
+    <h5>Single Entry Pattern</h5>
+    <p>When fetching one entry, the callback is usually triggered once or twice:</p>
+    <ol>
+      <li><b><code>P4TC_PHASE_SOT</code></b>: The data for the requested entry is present in <code>p4tc_obj</code>.</li>
+      <li><b><code>P4TC_PHASE_EOT</code></b>: The transaction is complete. <code>p4tc_obj</code> is typically <code>NULL</code>.</li>
+    </ol>
+
+    <h5>Table Dump Pattern</h5>
+    <p>When performing a dump, the callback is triggered for <b>every entry</b> in the table:</p>
+    <ol>
+      <li><b><code>P4TC_PHASE_SOT</code></b>: Triggered for the <b>first entry</b> found. <code>p4tc_obj</code> contains this entry.</li>
+      <li><b><code>P4TC_PHASE_MOT</code></b>: Triggered for all <b>subsequent entries</b>. Each call contains exactly one entry in <code>p4tc_obj</code>.</li>
+      <li><b><code>P4TC_PHASE_EOT</code></b>: Triggered after the final entry has been delivered. <code>p4tc_obj</code> is <code>NULL</code>.</li>
+      <li><b><code>P4TC_PHASE_ABT</code></b>: Triggered if the dump was interrupted or failed.</li>
+    </ol>
+
+    <h4>Sample Implementation</h4>
+    <p>This example handles both single-entry and multi-entry results for <code>redirect_l2</code>:</p>
+
+    <pre><code class="language-c">int my_get_callback(const struct p4tc_obj *p4tc_obj, struct p4tc_runt_ctx *ctx,
+                    __u64 *cookie, enum p4tc_trans_phase trans_phase)
+{
+    const char *label = (const char *)cookie;
+
+    switch (trans_phase) {
+    case P4TC_PHASE_SOT:
+        printf("[%s] Beginning data reception...\n", label);
+        /* Fall through: SOT also carries the first entry */
+    case P4TC_PHASE_MOT:
+        if (p4tc_obj) {
+            // Process the entry (e.g., print it)
+            printf("[%s] Entry found:\n", label);
+            p4tc_obj_dump(p4tc_obj);
+        }
+        break;
+    case P4TC_PHASE_EOT:
+        printf("[%s] All data received successfully.\n", label);
+        break;
+    case P4TC_PHASE_ABT:
+        fprintf(stderr, "[%s] Operation failed or was aborted.\n", label);
+        return -1;
+    }
+    return 0;
+}</code></pre>
+
 
     <h1>Appendix 1: P4TC Supported Annotations And Types</h1>
 
+    <p>These annotations are specific to the TC backend and are typically prefixed with <code>tc_</code>.</p>
+
+    <p>The following annotations apply to externs.</p>
+
     <table>
       <thead>
-        <tr><th>Annotation</th><th>Description</th></tr>
+        <tr>
+          <th>Annotation</th>
+          <th>Description</th>
+        </tr>
       </thead>
       <tbody>
-        <tr><td><code>@tc_type</code></td><td>Maps P4 type to TC-native (macaddr, ipv4, dev, etc.)</td></tr>
-        <tr><td><code>@tc_acl</code></td><td>Defines permissions (CRUDXPS).</td></tr>
-        <tr><td><code>@name</code></td><td>External name for user-facing tools.</td></tr>
-        <tr><td><code>@tableonly</code></td><td>Restrict action to table entries only.</td></tr>
+        <tr>
+          <td><b><code>@tc_data</code></b></td>
+          <td>Marks a field in a control path struct as action data (parameters).</td>
+        </tr>
+        <tr>
+          <td><b><code>@tc_data_scalar</code></b></td>
+          <td>A variation of <code>@tc_data</code> used specifically for scalar action data values.</td>
+        </tr>
+        <tr>
+          <td><b><code>@tc_numel</code></b></td>
+          <td>Defines the capacity or number of elements for an extern (e.g., the size of a counter array or table).</td>
+        </tr>
+        <tr>
+          <td><b><code>@tc_init_val</code></b></td>
+          <td>Specifies the initial value for a TC entity (e.g., an extern's starting state).</td>
+        </tr>
+        <tr>
+          <td><b><code>@tc_ControlPath</code></b></td>
+          <td>Identifies P4 elements (tables/actions) that should be exposed to or managed by the control path.</td>
+        </tr>
+        <tr>
+          <td><b><code>@tc_may_override</code></b></td>
+          <td>Used with default actions to indicate that the control plane is allowed to override them at runtime.</td>
+        </tr>
+        <tr>
+          <td><b><code>@tc_md_read</code></b></td>
+          <td>Identifies metadata fields that the P4 program expects to read from the TC metadata area.</td>
+        </tr>
+        <tr>
+          <td><b><code>@tc_md_write</code></b></td>
+          <td>Identifies metadata fields that the P4 program is allowed to write to in the TC context.</td>
+        </tr>
+        <tr>
+          <td><b><code>@tc_md_exec</code></b></td>
+          <td>Identifies metadata that influences execution flow or is used within a specific execution context.</td>
+        </tr>
+      </tbody>
+    </table>
+
+
+    <p>The following annotations apply to all.</p>
+    <table>
+      <thead>
+        <tr>
+          <th>Annotation</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><b><code>@tc_type</code></b></td>
+          <td>Maps a P4 data type to a TC-native type (e.g., <code>macaddr</code>, <code>ipv4</code>, <code>ipv6</code>, <code>be16</code>, <code>be32</code>, <code>be64</code>, <code>dev</code>). Used on action parameters or struct fields. This allows the control plane to perform proper input validation and pretty-printing.</td>
+        </tr>
+        <tr>
+          <td><b><code>@tc_acl</code></b></td>
+          <td><b>Access Control:</b> Defines permissions for a table or extern, specifying accessibility from the Control Path (Netlink) vs. Data Path (P4 code).</td>
+        </tr>
+        <tr>
+          <td><b><code>@tc_key</code></b></td>
+          <td>Explicitly marks a field in a control path struct as a match key.</td>
+        </tr>
+        <tr>
+          <td><b><code>@nummask</code></b></td>
+          <td><b>Resource Hint:</b> Specifies the maximum number of unique masks allowed for a ternary match table, helping the backend stay within kernel/hardware constraints.</td>
+        </tr>
+        <tr>
+          <td><b><code>@default_hit</code></b></td>
+          <td><b>Hit Behavior:</b> Designates an action as the default behavior when a table lookup results in a match ("hit").</td>
+        </tr>
+        <tr>
+          <td><b><code>@default_hit_const</code></b></td>
+          <td><b>Fixed Hit Behavior:</b> Indicates that the default hit action is constant and cannot be modified by the control plane.</td>
+        </tr>
+        <tr>
+          <td><b><code>@tableonly</code></b></td>
+          <td><b>Action Constraint:</b> Restricts an action to be used only as a regular table entry.</td>
+        </tr>
+        <tr>
+          <td><b><code>@defaultonly</code></b></td>
+          <td><b>Action Constraint:</b> Restricts an action to be used only as a default action.</td>
+        </tr>
+        <tr>
+          <td><b><code>@name</code></b></td>
+          <td><b>External Identity:</b> Provides an explicit external name for an object, overriding the internal P4 identifier for user-facing tools.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Supported Match Types</h3>
+    <p>The backend supports the following table match types, mapped to TC's internal classifier logic are defined in <i>include/uapi/linux/p4tc.h</i> enum <i>p4_tc_match_type</i></p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Match Type</th>
+          <th>TC Constant</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><b><code>exact</code></b></td>
+          <td><code>P4TC_MATCH_TYPE_EXACT</code></td>
+          <td>Exact value match.</td>
+        </tr>
+        <tr>
+          <td><b><code>lpm</code></b></td>
+          <td><code>P4TC_MATCH_TYPE_LPM</code></td>
+          <td>Longest Prefix Match. Has value and mask.</td>
+        </tr>
+        <tr>
+          <td><b><code>ternary</code></b></td>
+          <td><code>P4TC_MATCH_TYPE_TERNARY</code></td>
+          <td>Ternary match using value and mask.</td>
+        </tr>
       </tbody>
     </table>
 
     <h3>Supported Data Types</h3>
+
+    <p>The P4 <code>tc</code> backend supports, in addition to P4 datatypes, a specific set of data types that are mapped from P4 to TC-native representations. TC specific data types are defined in <i>include/uapi/linux/p4tc.h</i> These types can be specified using the <code>@tc_type("type_name")</code> annotation on table keys, action parameters, or struct fields.</p>
+
+    <p>P4 bit types bit&lt;X&gt; which are not part of the ones listed above are supported as type <i>bitX</i> where X is an arbitrary number unless overridden by the <i>@tc_type</i> annotation - for example the action <i>send_nh()</i> parameter <i>dmac</i> is described as <i>@tc_type("macaddr") bit&lt;48&gt; dmac</i> - making it available to the p4tc control api in a Colon-Hexadecimal format.</p>
+
     <table>
       <thead>
-        <tr><th>Type Name</th><th>Description</th></tr>
+        <tr>
+          <th>Type Name</th>
+          <th>Description</th>
+        </tr>
       </thead>
       <tbody>
-        <tr><td><code>dev</code></td><td>Network interface name (e.g., "eth0")</td></tr>
-        <tr><td><code>macaddr</code></td><td>48-bit MAC address (00:40:96...)</td></tr>
-        <tr><td><code>ipv4</code>/<code>ipv6</code></td><td>IP addresses.</td></tr>
-        <tr><td><code>bit8</code>/<code>16</code>/<code>32</code>/<code>64</code></td><td>Unsigned integers.</td></tr>
+        <tr>
+          <td><b><code>dev</code></b></td>
+          <td>Represents a network interface/device name in human readable linux naming convention e.g "eth0"</td>
+        </tr>
+        <tr>
+          <td><b><code>macaddr</code></b></td>
+          <td>Represents a 48-bit Ethernet MAC address Colon-Hexadecimal format i.e. Six pairs separated by colons (e.g., 00:40:96:81:4A:2B).</td>
+        </tr>
+        <tr>
+          <td><b><code>ipv4</code></b></td>
+          <td>Represents a 32-bit IPv4 address in dotted-decimal notation as four decimal numbers (octets), each ranging from 0 to 255, separated by periods (e.g., 192.168.1.1)</td>
+        </tr>
+        <tr>
+          <td><b><code>ipv6</code></b></td>
+          <td>Represents a 128-bit IPv6 address represented as eight groups of four hexadecimal digits, separated by colons (<code>:</code>), such as <code>2001:0db8:85a3:0000:0000:8a2e:0370:7334</code>. Addresses can be simplified by removing leading zeros in any group and replacing a single, consecutive string of all-zero groups with a double colon (<code>::</code>)</td>
+        </tr>
+        <tr>
+          <td><b><code>bitX</code></b></td>
+          <td>Standard P4 bitstring (default type). See discussion below</td>
+        </tr>
+        <tr>
+          <td><b><code>bit8</code></b></td>
+          <td>P4 type bit8 unsigned integer.</td>
+        </tr>
+        <tr>
+          <td><b><code>bit16</code></b></td>
+          <td>P4 type bit16 unsigned integer.</td>
+        </tr>
+        <tr>
+          <td><b><code>bit32</code></b></td>
+          <td>P4 type bit32 unsigned integer.</td>
+        </tr>
+        <tr>
+          <td><b><code>bit64</code></b></td>
+          <td>P4 type bit64 unsigned integer.</td>
+        </tr>
+        <tr>
+          <td><b><code>bit128</code></b></td>
+          <td>P4 type bit128 unsigned integer.</td>
+        </tr>
+        <tr>
+          <td><b><code>int8</code></b></td>
+          <td>8 bit signed integer.</td>
+        </tr>
+        <tr>
+          <td><b><code>int16</code></b></td>
+          <td>16 bit signed integer.</td>
+        </tr>
+        <tr>
+          <td><b><code>int32</code></b></td>
+          <td>32 bit signed integer.</td>
+        </tr>
+        <tr>
+          <td><b><code>int64</code></b></td>
+          <td>64 bit signed integer.</td>
+        </tr>
+        <tr>
+          <td><b><code>int128</code></b></td>
+          <td>128 bit signed integer.</td>
+        </tr>
+        <tr>
+          <td><b><code>be16</code></b></td>
+          <td>16-bit Big-Endian integer.</td>
+        </tr>
+        <tr>
+          <td><b><code>be32</code></b></td>
+          <td>32-bit Big-Endian integer.</td>
+        </tr>
+        <tr>
+          <td><b><code>be64</code></b></td>
+          <td>64-bit Big-Endian integer.</td>
+        </tr>
+        <tr>
+          <td><b><code>string</code></b></td>
+          <td>null terminated string.</td>
+        </tr>
+        <tr>
+          <td><b><code>bool</code></b></td>
+          <td>boolean.</td>
+        </tr>
       </tbody>
     </table>
+
+    <hr>
 
     <p>By combining P4's expressive datapath definition with a mature, resource-oriented control API, P4TC provides the final piece of the puzzle for building truly flexible, high-performance network stacks in Linux.</p>
 
