@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+
+  <title>Building Robust Control Planes With P4TC API - P4TC Blog</title>
+
+  <base href="../" target="_self">
+
+  <meta name="description" content="Building Robust Control Planes With P4TC API"> <meta name="Keywords" content="Linux kernel, Linux, kernel, network, networking, P4, TC, SDN" />
+
+  <meta property="og:type" content="article" />
+<meta property="og:title" content="Building Robust Control Planes With P4TC API" />
+<meta property="og:description" content="Building Robust Control Planes With P4TC API" />
+<meta property="og:url" content="" />
+<meta property="og:image" content="" />
+<meta property="og:image:width" content="398" />
+<meta property="og:image:height" content="398" />
+<meta property="og:locale" content="en_US" />
+
+
+  <link rel="stylesheet" href="style/site.css">
+  <style>
+    :root {
+      --primary-color: #D92121;
+      --secondary-color: #111111;
+      --accent-color: #D92121;
+      --text-color: #E8E8E8;
+      --bg-color: #000000;
+      --code-bg: #111111;
+      --border-color: #333;
+      --secondary-text: #999999;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      line-height: 1.6;
+      color: var(--text-color);
+      background-color: var(--bg-color);
+      margin: 0;
+    }
+
+    #content {
+      max-width: 800px;
+      margin: 60px auto;
+      padding: 0 20px;
+    }
+
+    h1, h2, h3, h4, h5 {
+      color: #FFFFFF;
+      margin-top: 2.5em;
+      margin-bottom: 0.5em;
+      font-weight: 700;
+      line-height: 1.2;
+    }
+
+    h1 {
+      font-size: 3rem;
+      letter-spacing: -0.02em;
+      border-bottom: 2px solid var(--accent-color);
+      padding-bottom: 20px;
+    }
+
+    h2 {
+      font-size: 1.8rem;
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 10px;
+    }
+
+    p {
+      margin-bottom: 1.5em;
+      font-size: 1.125rem;
+    }
+
+    a {
+      color: var(--accent-color);
+      text-decoration: none;
+      transition: opacity 0.2s;
+    }
+
+    a:hover {
+      opacity: 0.8;
+      text-decoration: underline;
+    }
+
+    img {
+      max-width: 100%;
+      height: auto;
+      border: 1px solid var(--border-color);
+      margin: 40px auto;
+      display: block;
+    }
+
+    figure {
+      margin: 60px 0;
+      text-align: center;
+    }
+
+    figcaption {
+      font-family: "SFMono-Regular", Consolas, monospace;
+      font-size: 0.85em;
+      color: var(--secondary-text);
+      margin-top: 15px;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+    }
+
+    pre {
+      background: var(--code-bg);
+      padding: 24px;
+      border: 1px solid var(--border-color);
+      overflow-x: auto;
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      font-size: 0.9em;
+      line-height: 1.5;
+      margin: 30px 0;
+    }
+
+    code {
+      font-family: "SFMono-Regular", Consolas, monospace;
+      background: var(--code-bg);
+      padding: 0.2em 0.4em;
+      border-radius: 3px;
+      font-size: 85%;
+      color: var(--accent-color);
+    }
+
+    .important, .note, .tip {
+      padding: 30px;
+      margin: 40px 0;
+      border-left: 4px solid var(--accent-color);
+      background: #0a0a0a;
+    }
+
+    blockquote {
+      border-left: 2px solid var(--accent-color);
+      padding: 10px 30px;
+      margin: 40px 0;
+      font-style: italic;
+      color: var(--secondary-text);
+      font-size: 1.2em;
+    }
+
+    ul, ol {
+      margin-bottom: 1.5em;
+      padding-left: 1.5em;
+    }
+
+    li {
+      margin-bottom: 0.8em;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 40px 0;
+      background: var(--bg-color);
+      border: 1px solid var(--border-color);
+    }
+
+    th, td {
+      padding: 12px;
+      text-align: left;
+      border: 1px solid var(--border-color);
+    }
+
+    th {
+      background-color: #111;
+      color: #FFF;
+    }
+
+    #welcome {
+      background-color: var(--bg-color);
+      color: var(--accent-color);
+      padding: 60px 0 20px 0;
+      font-family: "SFMono-Regular", Consolas, monospace;
+      font-size: 1rem;
+      font-weight: bold;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      text-align: center;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    #nav {
+      background-color: var(--bg-color);
+      padding: 20px 0;
+      text-align: center;
+      position: sticky;
+      top: 0;
+      z-index: 1000;
+      border-bottom: 1px solid var(--border-color);
+      backdrop-filter: blur(10px);
+    }
+
+    #nav a {
+      color: var(--text-color);
+      text-decoration: none;
+      margin: 0 20px;
+      font-family: "SFMono-Regular", Consolas, monospace;
+      font-size: 0.9rem;
+      font-weight: 500;
+      transition: color 0.3s ease;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+    }
+
+    #nav a:hover {
+      color: var(--accent-color);
+    }
+  </style>
+</head>
+
+<body>
+  <div id="welcome">
+    P4TC Blog
+  </div>
+
+  <div id="nav">
+    <a href="index.html">Home</a>
+    <a href="blog.html">Blog</a>
+  </div>
+  <br />
+
+  <div id="content">
+    <h1>Building Robust Control Planes With P4TC API</h1>
+
+    <p>Modern network device architectures are traditionally split into three layers: hardware, the software datapath, and the software control plane.
+    Packet processing architectures on top of these layers are frequently tailored to the unique requirements of specific applications and organizations often with high degree of customization varying significantly based on internal culture and technical expertise. This is Conway’s Law in action: the system’s design mirrors the communication structure of the organization that builds it.</p>
+
+    <p>However, this customization often clashes with the rigid standards of upstream development and technological limitations:</p>
+    <ul>
+      <li><b>Hardware</b> is locked into fixed-function ASICs with multi-year development cycles.</li>
+      <li><b>Software</b> (both datapath and control) is often trapped by inflexible deployment processes and long release cycles.</li>
+    </ul>
+
+    <p>Today, implementing a new "custom" protocol requires a simultaneous, ground-up changes or worse a redesign across the entire stack—hardware ASICs, kernel code, and control logic.
+    <a href="https://www.p4tc.dev/">P4TC (P4 Traffic Control)</a> breaks this cycle. By using <a href="https://www.p4.org/">P4</a> as a standardized datapath definition language, P4TC ensures that <b>no new kernel or user-space code is needed to define a new datapath.</b> We enable the "scratching their own itch" principle, allowing Conway's Law to thrive without the technical debt of traditional integration.</p>
+
+    <p>This article, the third in our series, explores how P4TC leverages P4 to solve the final piece of the puzzle: building robust, customizable control plane interfaces. The article provides some brief background context, however, the reader would benefit by looking at the previous two articles. The <a href="blogs/why-p4tc.html">first article</a> discusses overall P4TC history, motivation and architecture. The <a href="blogs/ctrl-api-abstraction-part1.html">second article</a> describes the netlink architecture.</p>
+
+    <p>This organizational reflection often leads to technical silos where hardware and software layers become rigid and difficult to evolve.</p>
+
+    <h2>Breaking the Rigidity of Traditional Layers</h2>
+
+    <p>Figure 1 illustrates the P4TC workflow, showing how a single P4 program generates four distinct artifacts (highlighted in green):</p>
+
+    <ol>
+      <li><b>Hardware Program:</b> Loaded directly into the hardware device.</li>
+      <li><b>eBPF Program:</b> Injected into the Linux kernel datapath.</li>
+      <li><b>Control Templates:</b> Objects that allow the P4 runtime to interact with the software.</li>
+      <li><b>JSON Introspection:</b> A file used by the P4TC runtime to understand the program's structure.</li>
+    </ol>
+
+    <figure>
+      <img src="blogs/images/p4tc-sw-hw-workflow.png" alt="P4TC Workflow" width="500" height="400"/>
+      <figcaption>Figure 1: P4TC Workflow</figcaption>
+    </figure>
+
+    <h3>Overcoming Hardware Rigidity</h3>
+    <p>Instead of relying on vendor-mandated, "bottom-up" ASIC architectures, P4 enables a <b>"top-down" framework.</b> P4TC developers can specify their own datapaths and manage configurations directly via the control plane, shifting power from the hardware vendor to the network architect.</p>
+
+    <h3>Overcoming Datapath Software Rigidity</h3>
+    <p>Integrating new packet-processing capabilities into the Linux kernel is notoriously slow and costly. As discussed in <a href="blogs/why-p4tc.html">Why P4TC?</a>, even simple updates to something like introducing a <code>tc flower</code> protocol header can take years to reach major distributions.</p>
+
+    <p>P4TC solves this by generating <b>eBPF bytecode</b> that is injected into TC and XDP kernel hooks (Step #2 in Figure 1). Because P4TC is embedded directly into TC, it provides a <b>unified control path</b> for both software and hardware objects (see Figure 2). This ensures that whether you are managing software logic or hardware offloads, you use the exact same interface.</p>
+
+    <div class="note">
+      <strong>NOTE</strong><br><br>
+      P4TC simplifies eBPF execution by eliminating the "Verifier Battle." The <code>p4c-tc</code> compiler generates "known-good" code that the kernel trusts, allowing for complex networking logic without the risk of rejection by the eBPF verifier.
+    </div>
+
+    <h3>Overcoming Runtime Control Path Rigidity</h3>
+
+    <p>The P4TC control plane API is designed to support multiple transports between the control and datapath influenced by the ForCES concept of <i>Transport Mapping Layer</i> (TML) (see: <a href="https://datatracker.ietf.org/doc/html/rfc5810#section-5">RFC 5810</a> and <a href="https://datatracker.ietf.org/doc/html/rfc5811">RFC 5811</a>). The current implementation only supports <i>netlink</i> transport. You can read more about why we chose netlink in <a href="blogs/ctrl-api-abstraction-part1.html">Part 2 of this series</a>.</p>
+
+    <div class="tip">
+      <strong>TIP</strong><br><br>
+      <b>Why use Netlink instead of the eBPF system call?</b><br>
+      While eBPF has its own control interface to update maps etc, it lacks the features required for robust control. Rather than re-inventing the wheel within eBPF—which would lead to years of development lag—P4TC leverages the maturity, experience, and hardware offload interfaces already present in the Linux <code>tc</code> infrastructure and Netlink.
+    </div>
+
+    <figure>
+      <img src="blogs/images/hw-sw-control.png">
+      <figcaption>Figure 2: P4TC Runtime</figcaption>
+    </figure>
+
+    <p>Figure 2 highlights two game-changing features:</p>
+    <ul>
+      <li><b>Unified Datapath Management:</b> Use <code>skip_sw</code> or <code>skip_hw</code> flags to manage objects in either software or hardware through a single API.</li>
+      <li><b>Program Introspection:</b> By using a JSON <u>data model</u> introspection file, we can build a <b>universal control application.</b> Because the API is "self-describing," the application can interpret the P4 program structure dynamically, eliminating the need for recompilation when new datapaths are added.</li>
+    </ul>
+
+    <h1>Bootstrapping The P4 Program For Control</h1>
+
+    <p>P4 was originally designed as a datapath definition language, with no native support for control paths. To bridge this gap, the P4TC backend uses <b>annotations</b>—metadata embedded directly in the P4 code—to define how control constructs should behave.</p>
+
+    <h2>P4TC Annotations: The "Glue"</h2>
+    <p>Annotations act as the essential bridge between P4 logic and Linux TC. They guide the <code>p4c-tc</code> compiler in exposing datapath objects to the P4TC API via a <b>JSON introspection file.</b></p>
+
+    <p>Let’s look at a simple example: <code>redirect_l2</code> (<a href="https://github.com/p4tc-dev/p4tc-examples-pub/tree/main/simple/redirect_l2">source</a>). This program parses Ethernet IPv4 packets and uses the source IP to look up a next-hop in <code>nh_table</code>. On a hit, it rewrites MAC addresses and redirects the packet; on a miss, it drops the packet.</p>
+
+    <pre><code>control ingress(
+    inout my_ingress_headers_t  hdr,
+    inout my_ingress_metadata_t meta,
+    in    pna_main_input_metadata_t  istd,
+    inout pna_main_output_metadata_t ostd
+)
+{
+    // @tc_type maps P4 types to Linux-native formats (dev, macaddr, etc.)
+    action send_nh(@tc_type("dev") PortId_t port_id, @tc_type("macaddr") bit<48> dmac, @tc_type("macaddr") bit<48> smac) {
+         hdr.ethernet.srcAddr = smac;
+         hdr.ethernet.dstAddr = dmac;
+         send_to_port(port_id);
+    }
+
+    action drop() {
+        drop_packet();
+    }
+
+    table nh_table {
+        key = {
+            // @name provides a user-friendly alias for the control API 
+            hdr.ipv4.srcAddr : exact @tc_type("ipv4") @name("srcAddr");
+        }
+        actions = {
+            @tableonly send_nh;
+            drop;
+        }
+        size = REDIR_TABLE_SIZE;
+        const default_action = drop;
+    }
+
+    apply {
+        nh_table.apply();
+    }
+}</code></pre>
+
+    <h3>Key Annotations in <code>redirect_l2</code>:</h3>
+    <ul>
+      <li><b><code>@tc_type</code></b>: Maps P4 data to Linux-native types like <code>dev</code> (interface name), <code>macaddr</code> (48-bit hex), or <code>ipv4</code> (dotted-decimal). This enables the control plane to perform input validation and "pretty-print" values.</li>
+      <li><b><code>@name("srcAddr")</code></b>: Creates a friendly alias. Instead of referencing the cumbersome <code>hdr.ipv4.srcAddr</code>, the control API can simply use <code>srcAddr</code>.</li>
+      <li><b><code>@tableonly</code></b>: Restricts an action so it can only be used within table entries, not as a default action.</li>
+    </ul>
+
+    <h2>P4TC Program Provisioning</h2>
+
+    <p>The compiler produces a template script to manifest the control objects required for the P4 runtime to interface with the hardware and software datapaths (refer to <b>Figure 2</b>). This bash script utilizes the tc utility to execute netlink commands within the kernel. For the <i>redirect_l2</i> program, the output is as follows:</p>
+
+    <pre><code>#!/bin/bash -x
+
+set -e
+
+: "${TC:="tc"}"
+$TC p4template create pipeline/redirect_l2 numtables 1
+
+$TC p4template create action/redirect_l2/ingress/send_nh actid 1 \
+	param port_id type dev \
+	param dmac type macaddr \
+	param smac type macaddr
+$TC p4template update action/redirect_l2/ingress/send_nh state active
+
+$TC p4template create action/redirect_l2/ingress/drop actid 2
+$TC p4template update action/redirect_l2/ingress/drop state active
+
+$TC p4template create table/redirect_l2/ingress/nh_table \
+	tblid 1 \
+	type exact \
+	keysz 32 permissions 0x3ca6 tentries 262144 nummasks 1 \
+	table_acts act name redirect_l2/ingress/send_nh flags tableonly \
+	act name redirect_l2/ingress/drop
+$TC p4template update table/redirect_l2/ingress/nh_table default_miss_action permissions 0x1024 action redirect_l2/ingress/drop
+$TC p4template update pipeline/redirect_l2 state ready</code></pre>
+
+    <p>Once this script runs, the <code>redirect_l2</code> pipeline is live and ready for runtime control.</p>
+
+    <div class="note">
+      <strong>NOTE</strong><br><br>
+      While the provisioning process will be detailed in a separate discussion, a reader cross-referencing the P4 program should be able to discern the functionality of the template from its structure.
+    </div>
+
+    <h2>P4TC Introspection</h2>
+    <p>Based on the P4 program above, the compiler generates a <b>JSON introspection file</b> as illustrated in Figure 1. This file allows the runtime to understand the structure of the P4 program without needing hardcoded logic (see Figure 2).</p>
+
+    <pre><code>{
+  "schema_version" : "1.0.0",
+  "pipeline_name" : "redirect_l2",
+  "tables" : [
+    {
+      "name" : "ingress/nh_table",
+      "id" : 1,
+      "tentries" : 262144,
+      "permissions" : "0x3ca6",
+      "keysize" : 32,
+      "keyfields" : [
+        {
+          "id" : 1, "name" : "srcAddr", "type" : "ipv4", "match_type" : "exact", "bitwidth" : 32
+        }
+      ],
+      "actions" : [
+        {
+          "id" : 1,
+          "name" : "ingress/send_nh",
+          "action_scope" : "TableOnly",
+          "params" : [
+            { "id" : 1, "name" : "port_id", "type" : "dev", "bitwidth" : 32 },
+            { "id" : 2, "name" : "dmac", "type" : "macaddr", "bitwidth" : 48 },
+            { "id" : 3, "name" : "smac", "type" : "macaddr", "bitwidth" : 48
+            }
+          ],
+          "default_hit_action" : false,
+          "default_miss_action" : false
+        },
+        {
+          "id" : 2,
+          "name" : "ingress/drop",
+          "action_scope" : "TableAndDefault",
+          "default_miss_action" : true
+        }
+      ]
+    }
+  ]
+}</code></pre>
+
+    <p>Let's break down this definition:</p>
+
+    <ul>
+      <li><i>pipeline_name</i> carries the program's name (in this case <i>redirect_l2</i>)</li>
+      <li>There is a table <i>ingress/nh_table</i>:
+        <ul>
+          <li>allows a maximum of 262144 (REDIR_TABLE_SIZE) entries</li>
+          <li>has (default) permissions 0x3ca6(more on this when we later discuss the <i>@tc_acl</i> annotation).</li>
+          <li>has a 32 bit exact key with a keyfield known as "srcAddr" which interpreted as a type <i>ipv4</i></li>
+          <li>has two actions:
+            <ul>
+              <li>Action "ingress/send_nh" which is labelled as "TableOnly" takes 3 parameters: <i>port_id</i>, <i>srcMac</i>, and <i>dstMac</i>.</li>
+              <li>Action "ingress/drop" which takes no parameters and is labelled as "default_miss_action".</li>
+            </ul>
+          </li>
+        </ul>
+      </li>
+    </ul>
+
+    <h3>Why Introspection Matters:</h3>
+    <p>The JSON data model file is the secret to <b>universal control planes.</b> Because the API is "self-describing," a single control application can manage any P4 program. It simply reads the JSON to learn which tables, keys, and actions are available. In other words the application code never changes.</p>
+
+    <h1>Introducing The P4TC API</h1>
+
+    <p>The P4TC API is a <b>resource-oriented Netlink interface</b>.
+    The interface follows a REST-inspired paradigm where every P4 object is a "noun" identified by a path, and operations are "verbs" aligning with CRUD+ semantics (Create, Read, Update, Delete, plus Event Subscription):</p>
+
+    <ul>
+      <li><b>Create:</b> Add one or more table entries or extern instances.</li>
+      <li><b>Read:</b> Retrieve one or more table entries or extern instances.</li>
+      <li><b>Update:</b> Modify existing table entries or extern instance.</li>
+      <li><b>Delete:</b> Delete one or more table entries or extern instances.</li>
+      <li><b>Subscribe:</b> Subscribe to a datapath event.</li>
+      <li><b>Unsubscribe:</b> Unsubscribe from a datapath event.</li>
+    </ul>
+
+    <p>This approach allows for a small set of verbs but an infinite number of nouns, avoiding code churn every time a new object is introduced.</p>
+
+    <h2>P4TC CRUD+ Grammar</h2>
+
+    <p>The general syntax is of the form: &lt;<b>VERB</b>&gt; &lt;<b>NOUN</b>&gt; [<b>DATA</b>]+</p>
+
+    <h3>The Grammar at a Glance</h3>
+    <pre><code>&lt;COMMAND&gt;    ::= &lt;VERB&gt; &lt;NOUN&gt; [&lt;DATA&gt;]+
+
+&lt;VERB&gt;       ::= create | read (or get) | update | delete | subscribe | unsubscribe
+
+&lt;NOUN&gt;       ::= &lt;OBJTYPE&gt; &lt;PATH&gt;
+&lt;OBJTYPE&gt;    ::= table | extern
+&lt;PATH&gt;       ::= &lt;OBJECT NAME&gt; [[key &lt;KEYVAL&gt;] | [filter &lt;FILTERVAL&gt;]]</code></pre>
+
+    <h3>Understanding the Components</h3>
+
+    <ul>
+      <li><b>Verbs:</b> standard CRUD operations plus <b>subscribe/unsubscribe</b>.</li>
+      <li><b>Nouns:</b> objects identified by their type (<code>table</code> or <code>extern</code>) and path.</li>
+      <li><b>Keys:</b> used for targeted lookups (e.g., a specific IP address).</li>
+      <li><b>Filters:</b> SQL-like selectors used for mass operations or subset selection.</li>
+      <li><b>Data:</b> parameters required for <code>create</code> or <code>update</code>.</li>
+    </ul>
+
+    <h3>Illustrating The P4TC CRUD+ Grammar</h3>
+
+    <pre><code>CLI="./p4tccli"
+PNAME="redirect_l2"
+TNAME="ingress/nh_table"
+
+# Subscribe to all events on table $TNAME
+$CLI $PNAME subscribe table $TNAME
+
+# Create table entry
+$CLI $PNAME create table $TNAME key srcAddr 192.168.1.1 action ingress/send_nh port_id eth0 dmac 00:11:22:33:44:55 smac 66:77:88:99:AA:BB
+
+# Read back table entry
+$CLI $PNAME read table $TNAME key srcAddr 192.168.1.1
+
+# Dump all entries
+$CLI $PNAME read table $TNAME
+
+# Update table entry to drop
+$CLI $PNAME update table $TNAME key srcAddr 192.168.1.1 action ingress/drop
+
+# Delete the table entry
+$CLI $PNAME delete table $TNAME key srcAddr 192.168.1.1
+
+# Flush all entries
+$CLI $PNAME delete table $TNAME</code></pre>
+
+    <h2>P4TC API Optimizations</h2>
+
+    <p>To handle high-scale networking, P4TC offers: <b>Sharding</b>, <b>Batching</b>, and <b>Filtering</b>.</p>
+
+    <h3>1. P4TC Control Sharding</h3>
+    <p>Netlink allows concurrent access. Multiple threads can manage independent P4 objects or shard table entries across threads to increase update rates.</p>
+
+    <h3>2. P4TC CRUD+ Batching</h3>
+    <p>Batching groups multiple commands into a single system call, reducing user-kernel crossing overhead.</p>
+
+    <pre><code># Batched creation of three entries
+$CLI $PNAME create table $TNAME \
+  key srcAddr 192.168.1.1 action ingress/send_nh port_id eth1 dmac 00:AA:BB:CC:DD:EE smac 11:22:33:44:11:11 \
+  key srcAddr 192.168.1.2 action ingress/send_nh port_id eth1 dmac 00:AA:BB:CC:DD:EE smac 11:22:33:44:11:22 \
+  key srcAddr 192.168.1.3 action ingress/drop</code></pre>
+
+    <h3>3. P4TC CRUD+ Filters</h3>
+    <p>Filters allow mass operations based on data values rather than just keys (e.g., <code>WHERE port_id = eth0</code>).</p>
+
+    <pre><code># Delete all entries with send_nh.port_id = "eth1"
+$CLI $PNAME delete table $TNAME filter param.act.ingress.send_nh.port_id = eth1
+
+# Advanced: Delete idle entries
+$CLI $PNAME delete table $TNAME filter msecs_since > 30000</code></pre>
+
+    <h1>P4TC Runtime API: Identity And Permissions</h1>
+
+    <p><b>Identity</b> is a 32-bit ID used to identify the source of updates. Reserved IDs include:</p>
+
+    <table>
+      <thead>
+        <tr><th>ID</th><th>Entity</th><th>Description</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>0</td><td>unspec</td><td>Unspecified</td></tr>
+        <tr><td>1</td><td>kernel</td><td>Linux Kernel</td></tr>
+        <tr><td>2</td><td>tc</td><td>Traffic Control</td></tr>
+        <tr><td>3</td><td>timer</td><td>Kernel Timer</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Object Permissions: <code>@tc_acl</code></h3>
+    <p>Permissions define access control for Control Path (Netlink) and Datapath. Format is <i>CRUDXPS</i>.</p>
+
+    <h4>Table Permissions</h4>
+    <p>Tables have permissions for the whole object. Default is <code>CRUD--S-R--XP-</code>.</p>
+
+    <h4>Table Entry Permissions</h4>
+    <p>Entries inherit table permissions by default but can be overridden at runtime (e.g., for <code>const</code> entries).</p>
+
+    <div class="note">
+      <strong>NOTE</strong><br><br>
+      Read-only table entries cannot be updated or deleted at runtime. Permission denied is returned if attempted.
+    </div>
+
+    <h1>P4TC Runtime API: Lifecycle of Operations</h1>
+
+    <h3>1. General Preparation Stage</h3>
+    <pre><code>// Create context and object container
+struct p4tc_runt_ctx *ctx = p4tc_runt_ctx_create(P4TC_TML_OPS_NL);
+struct p4tc_obj *obj = p4tc_obj_create("redirect_l2", P4TC_OBJ_RUNTIME_TABLE);</code></pre>
+
+    <h3>2. Implementation Patterns</h3>
+
+    <h4>A. Create Table Entries</h4>
+    <pre><code>p4tc_obj_objname_set(obj, "ingress/nh_table");
+struct p4tc_key *key = p4tc_make_key(obj, "192.168.1.1");
+struct p4tc_runt_tbl_attrs *entry = p4tc_alloc_tbl_entry(obj, key, 0, P4TC_ENTITY_TC);
+p4tc_create_runt_act(entry, "ingress/send_nh", "eth0", "00:11:22...", "66:77:88...");
+p4tc_create(ctx, obj, 0, NULL, NULL);
+p4tc_resp_handle(ctx);</code></pre>
+
+    <h4>B. Subscription Management</h4>
+    <pre><code>p4tc_obj_objname_set(obj, "ingress/nh_table");
+p4tc_obj_filter_set(obj, "key.srcAddr = \"192.168.1.2\"");
+int sub_id = p4tc_subscribe(ctx, obj, 0, my_event_callback, NULL);
+p4tc_subscribe_resp_handle(ctx, sub_id);</code></pre>
+
+    <h3>3. Parameter and Callback Reference</h3>
+    <p>The callback lifecycle uses <code>P4TC_PHASE_SOT</code> (Start of Transaction), <code>MOT</code> (Middle), and <code>EOT</code> (End) to handle single or multi-entry results.</p>
+
+    <h1>Appendix 1: P4TC Supported Annotations And Types</h1>
+
+    <table>
+      <thead>
+        <tr><th>Annotation</th><th>Description</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>@tc_type</code></td><td>Maps P4 type to TC-native (macaddr, ipv4, dev, etc.)</td></tr>
+        <tr><td><code>@tc_acl</code></td><td>Defines permissions (CRUDXPS).</td></tr>
+        <tr><td><code>@name</code></td><td>External name for user-facing tools.</td></tr>
+        <tr><td><code>@tableonly</code></td><td>Restrict action to table entries only.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Supported Data Types</h3>
+    <table>
+      <thead>
+        <tr><th>Type Name</th><th>Description</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>dev</code></td><td>Network interface name (e.g., "eth0")</td></tr>
+        <tr><td><code>macaddr</code></td><td>48-bit MAC address (00:40:96...)</td></tr>
+        <tr><td><code>ipv4</code>/<code>ipv6</code></td><td>IP addresses.</td></tr>
+        <tr><td><code>bit8</code>/<code>16</code>/<code>32</code>/<code>64</code></td><td>Unsigned integers.</td></tr>
+      </tbody>
+    </table>
+
+    <p>By combining P4's expressive datapath definition with a mature, resource-oriented control API, P4TC provides the final piece of the puzzle for building truly flexible, high-performance network stacks in Linux.</p>
+
+  </div>
+
+  <br>
+  <br>
+  <br>
+  <br>
+  <p><small><a href="mailto:p4tc-discussions@netdevconf.info">Contact Us</a></small></p>
+</body>
+
+</html>
