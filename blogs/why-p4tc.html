@@ -24,146 +24,210 @@
   <link rel="stylesheet" href="style/site.css">
   <style>
     :root {
-      --primary-color: #D92121;
-      --secondary-color: #111111;
-      --accent-color: #D92121;
-      --text-color: #E8E8E8;
-      --bg-color: #000000;
+      --bg-primary: #f9f7f2;
+      --bg-secondary: #ffffff;
+      --text-primary: #1b1b1b;
+      --text-muted: #666666;
+      --accent: #d97757;
       --code-bg: #111111;
-      --border-color: #333;
-      --secondary-text: #999999;
+      --border-color: #e5e1da;
+      
+      --font-heading: "Ivar", Georgia, "Times New Roman", serif;
+      --font-body: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      --font-mono: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+      
+      --article-max: 800px;
     }
 
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      font-family: var(--font-body);
       line-height: 1.6;
-      color: var(--text-color);
-      background-color: var(--bg-color);
+      color: var(--text-primary);
+      background-color: var(--bg-primary);
       margin: 0;
+      -webkit-font-smoothing: antialiased;
     }
 
     #content {
-      max-width: 800px;
-      margin: 60px auto;
-      padding: 0 20px;
+      max-width: var(--article-max);
+      margin: 80px auto;
+      padding: 0 24px;
     }
 
     h1, h2, h3, h4, h5 {
-      color: #FFFFFF;
-      margin-top: 2.5em;
-      margin-bottom: 0.5em;
+      font-family: var(--font-heading);
+      color: var(--text-primary);
+      margin-top: 3em;
+      margin-bottom: 1rem;
       font-weight: 700;
-      line-height: 1.2;
+      line-height: 1.1;
+      letter-spacing: -0.01em;
     }
 
     h1 {
-      font-size: 3rem;
-      letter-spacing: -0.02em;
-      border-bottom: 2px solid var(--accent-color);
-      padding-bottom: 20px;
+      font-size: 3.5rem;
+      margin-top: 0;
+      padding-bottom: 2rem;
+      border-bottom: 1px solid var(--border-color);
     }
 
     h2 {
-      font-size: 1.8rem;
-      border-bottom: 1px solid var(--border-color);
-      padding-bottom: 10px;
+      font-size: 2.25rem;
+      margin-top: 4rem;
+    }
+
+    h3 {
+      font-size: 1.75rem;
     }
 
     p {
-      margin-bottom: 1.5em;
-      font-size: 1.125rem;
+      margin-bottom: 1.8rem;
+      font-size: 1.2rem;
     }
 
     a {
-      color: var(--accent-color);
-      text-decoration: none;
+      color: var(--accent);
+      text-decoration: underline;
+      text-underline-offset: 4px;
       transition: opacity 0.2s;
     }
 
     a:hover {
-      opacity: 0.8;
-      text-decoration: underline;
+      opacity: 0.7;
     }
 
     img {
       max-width: 100%;
       height: auto;
-      border: 1px solid var(--border-color);
-      margin: 40px auto;
+      border-radius: 4px;
+      margin: 48px auto;
       display: block;
     }
 
     /* Override for inline aligned images */
     img[align="left"] {
       display: inline;
-      margin: 0 20px 20px 0;
+      margin: 0 24px 24px 0;
     }
 
     figure {
-      margin: 60px 0;
+      margin: 64px 0;
       text-align: center;
     }
 
     figcaption {
-      font-family: "SFMono-Regular", Consolas, monospace;
-      font-size: 0.85em;
-      color: var(--secondary-text);
-      margin-top: 15px;
-      text-transform: uppercase;
-      letter-spacing: 0.1em;
+      font-size: 0.9rem;
+      color: var(--text-muted);
+      margin-top: 16px;
+      font-style: italic;
     }
 
     pre {
       background: var(--code-bg);
-      padding: 24px;
-      border: 1px solid var(--border-color);
+      padding: 32px;
+      border-radius: 8px;
       overflow-x: auto;
-      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-      font-size: 0.9em;
-      line-height: 1.5;
-      margin: 30px 0;
+      margin: 40px 0;
+      border: 1px solid rgba(0,0,0,0.1);
     }
 
     code {
-      font-family: "SFMono-Regular", Consolas, monospace;
-      background: var(--code-bg);
+      font-family: var(--font-mono);
+      font-size: 0.95rem;
+      line-height: 1.5;
+    }
+
+    pre code {
+      color: #e0e0e0;
+      background: none;
+      padding: 0;
+    }
+
+    p code, li code {
+      background: rgba(0,0,0,0.05);
       padding: 0.2em 0.4em;
-      border-radius: 3px;
-      font-size: 85%;
-      color: var(--accent-color);
+      border-radius: 4px;
+      font-size: 90%;
+      color: var(--text-primary);
+    }
+
+    .important, .note, .tip {
+      padding: 32px;
+      margin: 48px 0;
+      border-radius: 8px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.03);
+    }
+
+    .important strong, .note strong, .tip strong {
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      font-size: 0.85rem;
+      display: block;
+      margin-bottom: 12px;
+    }
+
+    blockquote {
+      border-left: 3px solid var(--accent);
+      padding: 8px 32px;
+      margin: 48px 0;
+      font-family: var(--font-heading);
+      font-style: italic;
+      color: var(--text-muted);
+      font-size: 1.4rem;
+      line-height: 1.5;
+    }
+
+    ul, ol {
+      margin-bottom: 2rem;
+      padding-left: 1.5em;
+    }
+
+    li {
+      margin-bottom: 1rem;
+      font-size: 1.15rem;
     }
 
     table {
       width: 100%;
       border-collapse: collapse;
-      margin: 40px 0;
-      background: var(--bg-color);
+      margin: 48px 0;
+      background: var(--bg-secondary);
+      border-radius: 8px;
+      overflow: hidden;
       border: 1px solid var(--border-color);
     }
 
-    td {
-      padding: 20px;
-      vertical-align: top;
-      border: 1px solid var(--border-color);
-      color: var(--secondary-text);
-    }
-
-    #welcome {
-      background-color: var(--bg-color);
-      color: var(--accent-color);
-      padding: 60px 0 20px 0;
-      font-family: "SFMono-Regular", Consolas, monospace;
-      font-size: 1rem;
-      font-weight: bold;
-      letter-spacing: 0.2em;
-      text-transform: uppercase;
-      text-align: center;
+    th, td {
+      padding: 16px;
+      text-align: left;
       border-bottom: 1px solid var(--border-color);
     }
 
+    th {
+      background-color: rgba(0,0,0,0.02);
+      font-weight: 700;
+      color: var(--text-primary);
+      text-transform: uppercase;
+      font-size: 0.8rem;
+      letter-spacing: 0.05em;
+    }
+
+    #welcome {
+      background-color: var(--bg-primary);
+      color: var(--text-primary);
+      padding: 40px 0 20px 0;
+      font-family: var(--font-heading);
+      font-size: 1.2rem;
+      font-weight: 700;
+      text-align: center;
+    }
+
     #nav {
-      background-color: var(--bg-color);
-      padding: 20px 0;
+      background-color: rgba(249, 247, 242, 0.9);
+      padding: 24px 0;
       text-align: center;
       position: sticky;
       top: 0;
@@ -173,19 +237,17 @@
     }
 
     #nav a {
-      color: var(--text-color);
+      color: var(--text-primary);
       text-decoration: none;
-      margin: 0 20px;
-      font-family: "SFMono-Regular", Consolas, monospace;
-      font-size: 0.9rem;
+      margin: 0 24px;
       font-weight: 500;
+      font-size: 1rem;
       transition: color 0.3s ease;
-      text-transform: uppercase;
-      letter-spacing: 0.1em;
     }
 
     #nav a:hover {
-      color: var(--accent-color);
+      color: var(--accent);
+      text-decoration: none;
     }
   </style>
   </head>
@@ -223,7 +285,7 @@
     <p>Any hardware offload in the TC world requires a functionally equivalent software
     implementation as illustrated below.</p>
 
-    <img align="left" width="200" height="300" src="blogs/images/software-twin.png" style="margin-right: 20px;">
+    <img align="left" width="200" height="300" src="blogs/images/software-twin.png">
 
     <p>A packet X input would expect the same transformation with an output result of Y
     whether that packet arrives in the kernel datapath or hardware offloaded datapath.</p>
@@ -257,7 +319,7 @@
     MAT runtime offload for the flower classifier (all the other offloadable
     classifiers follow the same semantics).</p>
 
-    <img align="left" width="400" height="600" src="blogs/images/tc-flower-offload.png" style="margin-right: 20px;">
+    <img align="left" width="400" height="600" src="blogs/images/tc-flower-offload.png">
 
     <p>The example demonstrates a user adding a table entry on the ingress of device
     <i>eth0</i> to match a packet with header fields <i>ethernet type ip, ip protocol SCTP
@@ -453,14 +515,18 @@
     how one would install MAT entries using flower and on the right handside with P4TC.</p>
 
     <table>
-      <tr>
-        <td>TC Flower: Software and Hardware Control</td>
-        <td>P4TC: Software and Hardware Control</td>
-      </tr>
-      <tr>
-        <td valign="top"><img src="blogs/images/tc-flower-offload.png"></td>
-        <td valign="top"><img src="blogs/images/p4tc-table-update.png"></td>
-      </tr>
+      <thead>
+        <tr>
+          <th>TC Flower: Software and Hardware Control</th>
+          <th>P4TC: Software and Hardware Control</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td valign="top"><img src="blogs/images/tc-flower-offload.png"></td>
+          <td valign="top"><img src="blogs/images/p4tc-table-update.png"></td>
+        </tr>
+      </tbody>
     </table>
 
     <p>There are a few subtle differences to note: The TC Flower approach
@@ -489,14 +555,18 @@
     all the way to destruction.</p>
 
     <table>
-      <tr>
-        <td>P4 Pipeline Datapath</td>
-        <td>P4 Runtime Control</td>
-      </tr>
-      <tr>
-        <td valign="top"><img src="blogs/images/p4tc-runtime-pipeline.png"></td>
-        <td valign="top"><img src="blogs/images/p4tc-table-update.png"></td>
-      </tr>
+      <thead>
+        <tr>
+          <th>P4 Pipeline Datapath</th>
+          <th>P4 Runtime Control</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td valign="top"><img src="blogs/images/p4tc-runtime-pipeline.png"></td>
+          <td valign="top"><img src="blogs/images/p4tc-table-update.png"></td>
+        </tr>
+      </tbody>
     </table>
 
     <p>The figure on the left above illustrates how a P4TC datapath operates after instantiation.
@@ -536,12 +606,16 @@
     generating P4TC templates. The workflow is described below:</p>
 
     <table>
-      <tr>
-        <td>Software And Hardware: Creating And Loading P4TC Program</td>
-      </tr>
-      <tr>
-        <td valign="top"><img src="blogs/images/p4tc-compile-workflow-install.png"></td>
-      </tr>
+      <thead>
+        <tr>
+          <th>Software And Hardware: Creating And Loading P4TC Program</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td valign="top"><img src="blogs/images/p4tc-compile-workflow-install.png"></td>
+        </tr>
+      </tbody>
     </table>
 
     <h4>Workflow</h4>
@@ -561,12 +635,12 @@
     <p>Several ways to instantiate the s/w datapath:</p>
 
     <p>Example1: parser is an action:</p>
-    <pre><code>tc filter add block 22 ingress protocol all prio 10 p4 pname myprog \
+    <pre><code class="language-bash">tc filter add block 22 ingress protocol all prio 10 p4 pname myprog \
     action bpf obj $PARSER.o section p4tc/parse \
     action bpf obj $PROGNAME.o section p4tc/main</code></pre>
 
     <p>Example2: parser is at XDP, rest of dpath as an action:</p>
-    <pre><code>ip link set $DEV xdp obj $PARSER.o sec p4tc/parse
+    <pre><code class="language-bash">ip link set $DEV xdp obj $PARSER.o sec p4tc/parse
     tc filter add block 22 ingress protocol all prio 10 p4 pname myprog \
     action bpf obj $PROGNAME.o section p4prog/main</code></pre>
 
@@ -574,7 +648,7 @@
 
     <p>Example3: HW only datapath.</p>
 
-    <pre><code>tc filter add block 22 ingress protocol all prio 10 p4 pname myprog</code></pre>
+    <pre><code class="language-bash">tc filter add block 22 ingress protocol all prio 10 p4 pname myprog</code></pre>
 
     <h4>Deployment Model</h4>
 
