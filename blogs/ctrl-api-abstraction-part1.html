@@ -482,8 +482,13 @@
     <p>The "original Netlink header" segment is also returned in the N/ACK. The control app can use the N/ACK to correlate to an issued request using the main header sequence number, etc.</p>
     <p>By default, on a NACK, the control app would also receive the original payload unless they explicitly requested not to get it.</p>
     <p>Often it is difficult to deduce from a response what piece of mechanism code contributed to a reported failure. Consider a control app sending a request with several attributes and a target mechanism deciding it does not like one of them and responding with a NACK error code of <code>-EINVAL</code> (indicating <i>invalid value</i>). It is difficult upon inspection of the response for the control app to understand which attribute was rejected. To alleviate this, a control application could optionally ask for more information from the mechanism in the form of extended ACKs. The extensions are carried in the response in one or more TLVs. A TLV payload could contain a descriptive English language explanation of the error or an offset to a list of attribute pointing to the erroneous one.</p>
-    <p>Let's illustrate a message from the routing mechanism in response to erroneous attempt to create an IPv4 route (see <i>Figure3</i>) claiming a 32 bit prefix size in field <code>rtm_dst_len</code> but infact sending a 128 bit size payload in the <code>RTA_DST TLV</code>. The error code in this case is <code>-EINVAL</code> and the extended ACK carries the following English message.</p>
-    <pre>ipv4: rtm_src_len and rtm_dst_len must be 32 for IPv4</pre>
+    <p>Let's illustrate a message from the routing mechanism in response to erroneous attempt to create an IPv4 route (see <i>Figure7</i>) claiming a 32 bit prefix size in field <code>rtm_dst_len</code> but infact sending a 128 bit size payload in the <code>RTA_DST TLV</code>. The error code in this case is <code>-EINVAL</code> and the extended ACK carries the following English message.</p>
+    <pre><code>ipv4: rtm_src_len and rtm_dst_len must be 32 for IPv4</code></pre>
+
+    <figure>
+      <img src="blogs/images/rtmsg.png">
+      <figcaption>Figure7: Sample Routing Error Message</figcaption>
+    </figure>
     <p>Consider a control application requesting a batch <i>update</i> for multiple table entries within a mechanism. If only a subset of the entries is successfully updated, the mechanism can still classify the overall operation as a success. However, it can leverage an <i>extended ACK</i> (as is done in P4TC) to provide granular feedback, detailing the specific count of successful updates versus failures. The control application can then use this metadata to initiate recovery procedures. For instance, upon detecting partial failures, the application might query the target table to synchronize state and identify exactly which entries were missed.</p>
     <p>The kernel can also issue error reports specific to <i>dump</i> transactions (see "Transaction Support"). A dump operation may lose synchronization after the initial message delivery, typically due to one of the following scenarios:</p>
     <ul>
@@ -501,11 +506,11 @@
     <p>A robust control abstraction <b>MUST</b> include ability to debug the communication infrastructure when needed. Netlink facilitates several techniques. We list a few here.</p>
     <p>The most common debugging approach is to listen to mechanism events. For standard mechanisms such as routing, traffic control etc the ability to subscribe to appropriate events and print the observed events on a console already exists via the <i>iproute</i> utility set. For proprietary mechanisms one would need to write a proprietary control app to subscribe to such events. Example below shows the <i>ip</i> cli subscribing to events on links (network ports) and sometime later being notified that the wireless link <i>wlp3s0</i> went down (notice the <i>NO-CARRIER</i> flag).</p>
     <p><b>myprompt</b>$ <i>ip monitor link</i></p>
-    <pre>4: wlp3s0: &lt;NO-CARRIER,BROADCAST,MULTICAST,UP&gt;
-    link/ether</pre>
+    <pre><code>4: wlp3s0: &lt;NO-CARRIER,BROADCAST,MULTICAST,UP&gt;
+    link/ether</code></pre>
     <p>The illustrated <i>ip</i> utility does not expose the "wire level" details. One way to get low level details is to use <i>strace</i> utility [24]. Below we illustrate the same event but with more details.</p>
     <p><b>myprompt</b>$ <i>strace ip mon link</i></p>
-    <pre>recvmsg(3, {msg_name={sa_family=AF_NETLINK, nl_pid=0, nl_groups=0x000001}, msg_namelen=12, msg_iov=[{iov_base=[{nlmsg_len=64, nlmsg_type=RTM_NEWLINK, nlmsg_flags=0, nlmsg_seq=0, nlmsg_pid=0}, {ifi_family=AF_UNSPEC, ifi_type=ARPHRD_ETHER, ifi_index=if_nametoindex("wlp3s0"), ifi_flags=IFF_UP|IFF_BROADCAST|IFF_MULTICAST, ifi_change=0}, [[{nla_len=11, nla_type=IFLA_IFNAME}, "wlp3s0"], [{nla_len=20, nla_type=IFLA_WIRELESS}, "\x10\x00\x19\x8b\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"]]], iov_len=16384}], msg_iovlen=1, msg_controllen=0, msg_flags=0}, 0) = 64</pre>
+    <pre><code>recvmsg(3, {msg_name={sa_family=AF_NETLINK, nl_pid=0, nl_groups=0x000001}, msg_namelen=12, msg_iov=[{iov_base=[{nlmsg_len=64, nlmsg_type=RTM_NEWLINK, nlmsg_flags=0, nlmsg_seq=0, nlmsg_pid=0}, {ifi_family=AF_UNSPEC, ifi_type=ARPHRD_ETHER, ifi_index=if_nametoindex("wlp3s0"), ifi_flags=IFF_UP|IFF_BROADCAST|IFF_MULTICAST, ifi_change=0}, [[{nla_len=11, nla_type=IFLA_IFNAME}, "wlp3s0"], [{nla_len=20, nla_type=IFLA_WIRELESS}, "\x10\x00\x19\x8b\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"]]], iov_len=16384}], msg_iovlen=1, msg_controllen=0, msg_flags=0}, 0) = 64</code></pre>
     <p>When the event fires up, recvmsg system call returns 64 bytes for an event on group 1(<i>nl_groups</i>=0x000001). Notice the link mechanism sub-header (all fields prefixed with <code>ifi_</code>) field <code>ifi_flags</code> bitmask has the bits <code>IFF_UP|IFF_BROADCAST|IFF_MULTICAST</code> set; these bits are reflected in the ip monitor link output in "<b>&lt;..&gt;</b>" enclosure. The <code>IFF_RUNNING</code> bit which signifies the link operational status is not set. The "ip monitor link" output prints <i>NO-CARRIER</i> for that bit.</p>
     <p>Note as well two other TLVs illustrated: <code>IFLA_WIRELESS</code> and <code>IFLA_IFNAME</code> (which carries the wireless link name).</p>
 
@@ -515,8 +520,14 @@
     </div>
 
     <p><i>nlmon</i>[18] is a special link/port that was created to capture system Netlink messages. When <i>nlmon</i> is administered to be up, all Netlink messages are copied to that device. Which means we can attach standard packet capture utilities to it (<i>wireshark</i> illustrated below):</p>
+
+    <figure>
+      <img src="blogs/images/netdm.png">
+      <figcaption>Figure8: Wireshark Netlink Capture</figcaption>
+    </figure>
+
     <p><b>myprompt</b>$ <i>tshark -i nlmon0 -v</i></p>
-    <pre>Linux rtnetlink (route Netlink) protocol
+    <pre><code>Linux rtnetlink (route Netlink) protocol
     Netlink message header (type: Create network interface)
         Length: 64
         Message type: Create network interface (16)
@@ -541,7 +552,7 @@
         Type: 0x0003, Device name (3)
             0... .... .... .... = Nested: False
             .0.. .... .... .... = Network byte order: False
-            Attribute type: Device name (3)</pre>
+            Attribute type: Device name (3)</code></pre>
     <p>Above we show the same netlink message that was displayed by the other two utilities. Note: "Device name" is an interpretation of the IFLA_NAME TLV.</p>
 
     <div class="note">
@@ -634,9 +645,9 @@
 
     <figure>
       <img src="blogs/images/ovs_datapath.png">
-      <figcaption>Figure7: ovs_datapath Generic Netlink mechanisms</figcaption>
+      <figcaption>Figure9: ovs_datapath Generic Netlink mechanisms</figcaption>
     </figure>
-    <p><i>Figure7</i> shows the features of a <i>Generic Netlink</i> mechanism called <i>ovs_datapath</i>. These features are retrieved when the controller is queried for a mechanism by name (or ID if known). In this case a utility called <i>genl</i> was used (command issued: <code>genl ctrl get name ovs_datapath</code>). The controller's response shows that mechanism <i>ovs_datapath</i> has target address 0x27, has a proprietary sub-header of size 4B, is capable of processing 9 different TLVs and supports 4 commands with IDs 0x1-0x4. Each command definition specifies its functionality/capabilities and the requisite permissions for user-space invocation. Lastly <i>ovs_datapath</i> advertises a single multicast group that can be subscribed to - in this case a multicast group called "ovs_datapath" which has ID/address 0x1.</p>
+    <p><i>Figure9</i> shows the features of a <i>Generic Netlink</i> mechanism called <i>ovs_datapath</i>. These features are retrieved when the controller is queried for a mechanism by name (or ID if known). In this case a utility called <i>genl</i> was used (command issued: <code>genl ctrl get name ovs_datapath</code>). The controller's response shows that mechanism <i>ovs_datapath</i> has target address 0x27, has a proprietary sub-header of size 4B, is capable of processing 9 different TLVs and supports 4 commands with IDs 0x1-0x4. Each command definition specifies its functionality/capabilities and the requisite permissions for user-space invocation. Lastly <i>ovs_datapath</i> advertises a single multicast group that can be subscribed to - in this case a multicast group called "ovs_datapath" which has ID/address 0x1.</p>
     <p>Introspection is a powerful idea because it allows for control applications to dynamically discover mechanisms of interest and their supported features. This implies that one could write a very generic control application which queries the controller and builds its infrastructure as needed - a big improvement relative to existing applications such as iproute2 which assume static values.</p>
     <p>We contend that a good control abstraction <b>MUST</b> support introspection and for this reason we add <i>introspection</i> to our early list of necessary verbs <i>CRUDSP</i> (<i>Create</i>, <i>Read</i>, <i>Update</i>, <i>Delete</i>, <i>Subscribe</i>, <i>Publish</i>) to <i>CRUDSPI</i> (<i>Create</i>, <i>Read</i>, <i>Update</i>, <i>Delete</i>, <i>Subscribe</i>, <i>Publish</i>, <i>Introspection</i>).</p>
 
@@ -651,38 +662,39 @@
 
     <figure>
       <img src="blogs/images/protoco-msgs.png">
-      <figcaption>Figure8: Sample Netlink Messaging</figcaption>
-    </figure>
-    <p><i>Figure8</i> illustrates classical Netlink protocol exchange pattern used by most applications (most prominent being <i>iproute2</i>). In the first exchange (messages 1-6) the control app issues a <i>Read</i> request which also solicits for an acknowledgement. Upon successful processing of the request by the mechanism, the control app will receive the data it requested back.</p>
+      <figcaption>Figure10: Sample Netlink Messaging</figcaption>
+      </figure>
 
-    <div class="note">
+      <p><i>Figure10</i> illustrates classical Netlink protocol exchange pattern used by most applications (most prominent being <i>iproute2</i>). In the first exchange (messages 1-6) the control app issues a <i>Read</i> request which also solicits for an acknowledgement. Upon successful processing of the request by the mechanism, the control app will receive the data it requested back.</p>
+
+      <div class="note">
       <strong>NOTE</strong><br><br>
       Note: This is counter-intuitive because it seems more sensible to first receive the ACK to say "your message was received" or something along those lines and then the requested data but that would complicate the implementation.
-    </div>
+      </div>
 
-    <p>Upon failure in the mechanism processing, the control app will get back a NACK described in section "Netlink Error Reporting".</p>
-    <p>In the second exchange (message 7-12) in <i>Figure8</i> we illustrate the operation of message types that do not generate data from the mechanism (type being any of <i>Create</i>/<i>Update</i>/<i>Delete</i>). In such a request, the mechanism response will be either an ACK or NACK.</p>
+      <p>Upon failure in the mechanism processing, the control app will get back a NACK described in section "Netlink Error Reporting".</p>
+      <p>In the second exchange (message 7-12) in <i>Figure10</i> we illustrate the operation of message types that do not generate data from the mechanism (type being any of <i>Create</i>/<i>Update</i>/<i>Delete</i>). In such a request, the mechanism response will be either an ACK or NACK.</p>
 
-    <h3>Integrating Reliability</h3>
-    <p>A classical reliable protocol could be created by a control plane application by:</p>
-    <ul>
+      <h3>Integrating Reliability</h3>
+      <p>A classical reliable protocol could be created by a control plane application by:</p>
+      <ul>
       <li>Using the main header <i>sequence</i> numbers to track the request sent to mechanism(s).</li>
       <li>Soliciting for an ACK from the mechanism via the main header <i>Flags</i> field setting <code>NLM_F_ACK</code> (see discussion on "Optimizing Message Exchange")</li>
       <li>Adding timers for re-transmits in case the application does not receive responses in time. Useful for detecting cases where the kernel continues to operate but the response never comes back (I have seen this in situations where Netlink mutex is deadlocked)</li>
-    </ul>
+      </ul>
 
-    <h3>Handling Semi Reliability</h3>
-    <p>Events from the kernel mechanism are not reliably delivered. The kernel could drop event messages for many reasons: For example the allocated message space may be misconfigured and is insufficient to carry the event details; or the application is unable to keep up with the rate of event arrival in which case the buffer space allocated is quickly overrun. The application should detect and recover from such situations as described in "Error Detection, Reporting And Handling".</p>
+      <h3>Handling Semi Reliability</h3>
+      <p>Events from the kernel mechanism are not reliably delivered. The kernel could drop event messages for many reasons: For example the allocated message space may be misconfigured and is insufficient to carry the event details; or the application is unable to keep up with the rate of event arrival in which case the buffer space allocated is quickly overrun. The application should detect and recover from such situations as described in "Error Detection, Reporting And Handling".</p>
 
-    <h3>Validating Write Commands</h3>
-    <p>When issuing <i>write</i> commands (<i>Create</i>, <i>Update</i>, <i>Delete</i>), control applications often require the resulting policy data in addition to a success confirmation. As shown in <i>Figure8</i>, standard <i>write</i> commands do not inherently get back the affected data. The desire to get back the data is often driven by a need for robustness: validating that kernel-level execution matches the application's intent; however, primarily the driver is the need for state synchronization i.e making sure what the application commanded is what was done by the mechanism end point.</p>
-    <p>In many cases, the kernel mechanism assumes default attributes when they are left unspecified in an issued command; for instance, the tc actions mechanism generates an index ID for a created action instance. The control application cannot predict what index is issued . To resolve this synchronization gap, the application can resort to several approaches:</p>
-    <ol>
+      <h3>Validating Write Commands</h3>
+      <p>When issuing <i>write</i> commands (<i>Create</i>, <i>Update</i>, <i>Delete</i>), control applications often require the resulting policy data in addition to a success confirmation. As shown in <i>Figure10</i>, standard <i>write</i> commands do not inherently get back the affected data. The desire to get back the data is often driven by a need for robustness: validating that kernel-level execution matches the application's intent; however, primarily the driver is the need for state synchronization i.e making sure what the application commanded is what was done by the mechanism end point.</p>
+      <p>In many cases, the kernel mechanism assumes default attributes when they are left unspecified in an issued command; for instance, the tc actions mechanism generates an index ID for a created action instance. The control application cannot predict what index is issued . To resolve this synchronization gap, the application can resort to several approaches:</p>
+      <ol>
       <li>Synchronous Polling: The application follows a write with a subsequent read request to verify the entry’s existence and attributes.</li>
       <li>Asynchronous notification via event Subscription: The application subscribes and listens for asynchronous events detailing changes. However, because events can be unreliable, this must be augmented by periodic "read" audits as described earlier.</li>
-    </ol>
-    <p>There is a third way.</p>
-    <p>One could set the <code>NLM_F_ECHO</code> to a write request's main header <i>flags</i> field. In such cases <i>write</i> requests, such as the <i>Create</i> request shown in <i>Figure8</i>, will also get the data result of the executed commands i.e the exchange would be similar to a successful read command, receiving a message with the data as created by the mechanism. Main difference would be that it is then followed by an ACK.</p>
+      </ol>
+      <p>There is a third way.</p>
+      <p>One could set the <code>NLM_F_ECHO</code> to a write request's main header <i>flags</i> field. In such cases <i>write</i> requests, such as the <i>Create</i> request shown in <i>Figure10</i>, will also get the data result of the executed commands i.e the exchange would be similar to a successful read command, receiving a message with the data as created by the mechanism. Main difference would be that it is then followed by an ACK.</p>
 
     <h3>Optimizing Message Exchanges</h3>
     <p>Taking into perspective the <code>NLM_F_ECHO</code> flag, we note that a control app write request does not need to solicit for an ACK from the mechanism. Essentially <i>Create</i>/<i>Update</i>/<i>Delete</i> requests can set the <code>NLM_F_ECHO</code> flag instead. On success the app receives the applied data back and on failure receives a <i>NACK</i>.</p>

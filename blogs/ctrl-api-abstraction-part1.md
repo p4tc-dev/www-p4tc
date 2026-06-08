@@ -223,11 +223,16 @@ By default, on a NACK, the control app would also receive the original payload u
 
 Often it is difficult to deduce from a response what piece of mechanism code contributed to a reported failure. Consider a control app sending a request with several attributes and a target mechanism deciding it does not like one of them and responding with a NACK error code of `-EINVAL` (indicating *invalid value*). It is difficult upon inspection of the response for the control app to understand which attribute was rejected. To alleviate this, a control application could optionally ask for more information from the mechanism in the form of extended ACKs. The extensions are carried in the response in one or more TLVs. A TLV payload could contain a descriptive English language explanation of the error or an offset to a list of attribute pointing to the erroneous one.
 
-Let's illustrate a message from the routing mechanism in response to erroneous attempt to create an IPv4 route (see *Figure3*) claiming a 32 bit prefix size in field `rtm_dst_len` but infact sending a 128 bit size payload in the `RTA_DST TLV`. The error code in this case is `-EINVAL` and the extended ACK carries the following English message.
+Let's illustrate a message from the routing mechanism in response to erroneous attempt to create an IPv4 route (see *Figure7*) claiming a 32 bit prefix size in field `rtm_dst_len` but infact sending a 128 bit size payload in the `RTA_DST TLV`. The error code in this case is `-EINVAL` and the extended ACK carries the following English message.
 
 ```
 ipv4: rtm_src_len and rtm_dst_len must be 32 for IPv4
 ```
+
+<figure>
+  <img  src="./images/rtmsg.png">
+  <figcaption>Figure7: Sample Routing Error Message</figcaption>
+</figure>
 
 Consider a control application requesting a batch *update* for multiple table entries within a mechanism. If only a subset of the entries is successfully updated, the mechanism can still classify the overall operation as a success. However, it can leverage an *extended ACK* (as is done in P4TC) to provide granular feedback, detailing the specific count of successful updates versus failures. The control application can then use this metadata to initiate recovery procedures. For instance, upon detecting partial failures, the application might query the target table to synchronize state and identify exactly which entries were missed.
 
@@ -277,6 +282,11 @@ Note as well two other TLVs illustrated: `IFLA_WIRELESS`  and `IFLA_IFNAME` (whi
 > When it is unable to interpret fields, *strace* will just dump raw data which can be deduced using the message definitions. For more human friendly output (such as above) you will need to be patch *strace* and teach it how to interpret these message fields.
 
 *nlmon*[18] is a special link/port that was created to capture system Netlink messages. When *nlmon* is administered to be up, all Netlink messages are copied to that device. Which means we can attach standard packet capture utilities to it (*wireshark* illustrated below):
+
+<figure>
+  <img  src="./images/netdm.png">
+  <figcaption>Figure8: Wireshark Netlink Capture</figcaption>
+</figure>
 
 **myprompt**$ *tshark -i nlmon0 -v*
 
@@ -416,9 +426,9 @@ This feature provides a "service discovery" infrastructure to control applicatio
 
 <figure>
   <img  src="./images/ovs_datapath.png">
-  <figcaption>Figure7: ovs_datapath Generic Netlink mechanisms</figcaption>
+  <figcaption>Figure9: ovs_datapath Generic Netlink mechanisms</figcaption>
 </figure>
-*Figure7* shows the features of a *Generic Netlink* mechanism called *ovs_datapath*. These features are retrieved  when the controller is queried for a mechanism by name (or ID if known). In this case a utility called *genl* was used (command issued: `genl ctrl get name ovs_datapath`). The controller's response shows that mechanism *ovs_datapath* has target address 0x27, has a proprietary sub-header of size 4B, is capable of processing 9 different TLVs and supports 4 commands with IDs 0x1-0x4. Each command definition specifies its functionality/capabilities and the requisite permissions for user-space invocation. Lastly *ovs_datapath* advertises a single multicast group that can be subscribed to - in this case a multicast group called "ovs_datapath" which has ID/address 0x1.
+*Figure9* shows the features of a *Generic Netlink* mechanism called *ovs_datapath*. These features are retrieved  when the controller is queried for a mechanism by name (or ID if known). In this case a utility called *genl* was used (command issued: `genl ctrl get name ovs_datapath`). The controller's response shows that mechanism *ovs_datapath* has target address 0x27, has a proprietary sub-header of size 4B, is capable of processing 9 different TLVs and supports 4 commands with IDs 0x1-0x4. Each command definition specifies its functionality/capabilities and the requisite permissions for user-space invocation. Lastly *ovs_datapath* advertises a single multicast group that can be subscribed to - in this case a multicast group called "ovs_datapath" which has ID/address 0x1.
 
 Introspection is a powerful idea because it allows for control applications to dynamically discover mechanisms of interest and their supported features. This implies that one could write a very generic control application which queries the controller and builds its infrastructure as needed - a big improvement relative to existing applications such as iproute2 which assume static values.
 
@@ -435,9 +445,9 @@ To complement the message abstractions, Netlink provides protocol features that 
 
 <figure>
   <img  src="./images/protoco-msgs.png">
-  <figcaption>Figure8: Sample Netlink Messaging</figcaption>
+  <figcaption>Figure10: Sample Netlink Messaging</figcaption>
 </figure>
-*Figure8* illustrates classical Netlink protocol exchange pattern used by most applications (most prominent being *iproute2*).
+*Figure10* illustrates classical Netlink protocol exchange pattern used by most applications (most prominent being *iproute2*).
 In the first exchange (messages 1-6) the control app issues a *Read* request which also solicits for an acknowledgement. Upon successful processing of the request by the mechanism, the control app will receive the data it requested back.
 
 > [!NOTE]
@@ -446,7 +456,7 @@ In the first exchange (messages 1-6) the control app issues a *Read* request whi
 
 Upon failure in the mechanism processing, the control app will get back a NACK described in section "Netlink Error Reporting".
 
-In the second exchange (message 7-12) in *Figure8* we illustrate the operation of message types that do not generate data from the mechanism (type being any of *Create*/*Update*/*Delete*). In such a request, the mechanism response will be  either an ACK or NACK.
+In the second exchange (message 7-12) in *Figure10* we illustrate the operation of message types that do not generate data from the mechanism (type being any of *Create*/*Update*/*Delete*). In such a request, the mechanism response will be  either an ACK or NACK.
 
 
 ### Integrating Reliability
@@ -463,7 +473,7 @@ Events from the kernel mechanism are not reliably delivered. The kernel could dr
 
 ### Validating Write Commands
 
-When issuing *write* commands (*Create*, *Update*, *Delete*), control applications often require the resulting policy data in addition to a success confirmation. As shown in *Figure8*, standard *write* commands do not inherently get back the affected data. The desire to get back the data is often driven by a need for robustness: validating that kernel-level execution matches the application's intent; however, primarily the driver is the need for state synchronization i.e making sure what the application commanded is what was done by the mechanism end point.
+When issuing *write* commands (*Create*, *Update*, *Delete*), control applications often require the resulting policy data in addition to a success confirmation. As shown in *Figure10*, standard *write* commands do not inherently get back the affected data. The desire to get back the data is often driven by a need for robustness: validating that kernel-level execution matches the application's intent; however, primarily the driver is the need for state synchronization i.e making sure what the application commanded is what was done by the mechanism end point.
 
 In many cases, the kernel mechanism assumes default attributes when they are left unspecified in an issued command; for instance, the tc actions mechanism generates an index ID for a created action instance. The control application cannot predict what index is issued . To resolve this synchronization gap, the application can resort to several approaches:
 
@@ -473,7 +483,7 @@ In many cases, the kernel mechanism assumes default attributes when they are lef
 
 There is a third way.
 
-One could set the `NLM_F_ECHO` to a write request's main header *flags* field. In such cases *write* requests, such as the *Create* request shown in *Figure8*, will also get the data result of the executed commands i.e the exchange would be similar to a successful read command, receiving a message with the data as created by the mechanism. Main difference would be that it is then followed by an ACK.
+One could set the `NLM_F_ECHO` to a write request's main header *flags* field. In such cases *write* requests, such as the *Create* request shown in *Figure10*, will also get the data result of the executed commands i.e the exchange would be similar to a successful read command, receiving a message with the data as created by the mechanism. Main difference would be that it is then followed by an ACK.
 
 ### Optimizing Message Exchanges
 
